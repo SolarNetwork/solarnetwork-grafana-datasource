@@ -1,4 +1,4 @@
-import { AuthorizationV2Builder, Environment, HttpHeaders, HttpMethod } from 'solarnetwork-api-core';
+import { AuthorizationV2Builder, Environment, HttpHeaders, HttpMethod, DatumFilter, NodeDatumUrlHelper } from 'solarnetwork-api-core';
 
 import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, MutableDataFrame, FieldType } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
@@ -20,29 +20,46 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     this.secret = settingsData.secret;
   }
 
-  private authV2Builder(url) {
+  private getEnvironment(host) {
     let a = document.createElement('a');
-    a.href = this.host;
-    const env = new Environment({
+    a.href = host;
+    return new Environment({
       host: a.hostname,
       protocol: a.protocol.substring(0, a.protocol.length - 1),
       hostname: a.hostname,
       port: a.port,
     });
+  }
+
+  private getDataEnvironment() {
+    return this.getEnvironment(this.host);
+  }
+
+  private getUrlEnvironment() {
+    return this.getEnvironment(this.proxy || this.host);
+  }
+
+  private getPathFromUrl(url) {
+    let a = document.createElement('a');
+    a.href = url;
+    return a.pathname + a.search;
+  }
+
+  private authV2Builder(path) {
+    const env = this.getDataEnvironment();
     var authBuilder = new AuthorizationV2Builder(this.token, env);
     return authBuilder
       .method(HttpMethod.GET)
-      .url(url)
+      .url(path)
       .snDate(true)
       .date(new Date())
       .saveSigningKey(this.secret);
   }
 
   private doRequest(url): Promise<any> {
-    var authBuilder = this.authV2Builder(url);
-    var host = this.proxy || this.host;
+    var authBuilder = this.authV2Builder(this.getPathFromUrl(url));
     var options = {
-      url: host + url,
+      url: url,
       headers: {
         Accept: 'application/json',
       },
@@ -56,20 +73,21 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
 
   async query(options: DataQueryRequest<SolarNetworkQuery>): Promise<DataQueryResponse> {
     const { range } = options;
-    const from = range!.from.toISOString().substr(0, 16);
-    const to = range!.to.toISOString().substr(0, 16);
+    const from = range!.from;
+    const to = range!.to;
+    const env = this.getUrlEnvironment();
 
     var data = await Promise.all(
       options.targets.map(target => {
-        const url =
-          '/solarquery/api/v1/sec/datum/list?nodeId=' +
-          target.node +
-          '&sourceIds=' +
-          target.source +
-          '&withoutTotalResultsCount=true&aggregation=Hour&startDate=' +
-          from +
-          '&endDate=' +
-          to;
+        var urlHelper = new NodeDatumUrlHelper(env);
+        const filter = new DatumFilter({
+          nodeId: target.node,
+          sourceId: target.source,
+          startDate: from,
+          endDate: to,
+        });
+        const url = urlHelper.listDatumUrl(filter);
+        console.log(url);
 
         return this.doRequest(url).then(result => {
           let times: number[] = [];
@@ -92,9 +110,9 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   async testDatasource() {
-    const url = '/solarquery/api/v1/sec/nodes/';
-
-    return this.doRequest(url)
+    const env = this.getUrlEnvironment();
+    const urlHelper = new NodeDatumUrlHelper(env);
+    return this.doRequest(urlHelper.listAllNodeIdsUrl())
       .then((res: any) => {
         return { status: 'success', message: 'Success' };
       })
