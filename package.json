@@ -1,0 +1,30 @@
+{
+  "name": "revolve-energy-solarnetwork-datasource",
+  "version": "1.0.0",
+  "description": "SolarNetwork integration & data source",
+  "scripts": {
+    "build": "grafana-toolkit plugin:build",
+    "test": "grafana-toolkit plugin:test",
+    "dev": "grafana-toolkit plugin:dev",
+    "watch": "grafana-toolkit plugin:dev --watch"
+  },
+  "keywords": [
+    "solarnetwork",
+    "grafana",
+    "plugin",
+    "panel"
+  ],
+  "author": "Revolve Energy Limited",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@grafana/data": "next",
+    "@grafana/toolkit": "next",
+    "@grafana/ui": "next",
+    "@grafana/runtime": "next",
+    "@types/lodash": "latest",
+    "solarnetwork-api-core": "^0.19.2"
+  },
+  "engines": {
+    "node": ">=12 <13"
+  }
+}

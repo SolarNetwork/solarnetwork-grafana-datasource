@@ -1,0 +1,35 @@
+{
+  "type": "datasource",
+  "name": "SolarNetwork",
+  "id": "revolve-energy-solarnetwork-datasource",
+  "metrics": true,
+  "info": {
+    "description": "SolarNetwork integration & data source",
+    "author": {
+      "name": "Revolve Energy Limited",
+      "url": "https://www.revolveenergy.co/"
+    },
+    "keywords": [],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Website",
+        "url": "https://github.com/shaybrazier/solarnetwork-grafana-datasource/"
+      },
+      {
+        "name": "License",
+        "url": "https://github.com/shaybrazier/solarnetwork-grafana-datasource/blob/master/LICENSE"
+      }
+    ],
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+  "dependencies": {
+    "grafanaVersion": "6.5.x",
+    "plugins": []
+  }
+}
