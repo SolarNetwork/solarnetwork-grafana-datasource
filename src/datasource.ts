@@ -8,35 +8,33 @@ import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
 export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
   private token: string;
   private secret: string;
-  private host: string;
-  private proxy?: string;
+  private env: Environment;
 
   constructor(instanceSettings: DataSourceInstanceSettings<SolarNetworkDataSourceOptions>) {
     super(instanceSettings);
     const settingsData = instanceSettings.jsonData || ({} as SolarNetworkDataSourceOptions);
     this.token = settingsData.token;
-    this.host = settingsData.host;
-    this.proxy = settingsData.proxy;
     this.secret = settingsData.secret;
+
+    this.env = this.createEnvironment(settingsData.host, settingsData.proxy);
   }
 
-  private getEnvironment(host) {
-    let a = document.createElement('a');
-    a.href = host;
+  private createEnvironment(host, proxy) {
+    let h = document.createElement('a');
+    h.href = host;
+    let proxyHost: string | undefined;
+    if (proxy) {
+      let p = document.createElement('a');
+      p.href = proxy;
+      proxyHost = p.hostname;
+    }
     return new Environment({
-      host: a.hostname,
-      protocol: a.protocol.substring(0, a.protocol.length - 1),
-      hostname: a.hostname,
-      port: a.port,
+      host: h.hostname,
+      protocol: h.protocol.substring(0, h.protocol.length - 1),
+      hostname: h.hostname,
+      port: h.port,
+      proxyHost: proxyHost,
     });
-  }
-
-  private getDataEnvironment() {
-    return this.getEnvironment(this.host);
-  }
-
-  private getUrlEnvironment() {
-    return this.getEnvironment(this.proxy || this.host);
   }
 
   private getPathFromUrl(url) {
@@ -46,8 +44,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   private authV2Builder(path) {
-    const env = this.getDataEnvironment();
-    var authBuilder = new AuthorizationV2Builder(this.token, env);
+    var authBuilder = new AuthorizationV2Builder(this.token, this.env);
     return authBuilder
       .method(HttpMethod.GET)
       .url(path)
@@ -72,10 +69,11 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   async query(options: DataQueryRequest<SolarNetworkQuery>): Promise<DataQueryResponse> {
+    console.log(options);
     const { range } = options;
     const from = range!.from;
     const to = range!.to;
-    const env = this.getUrlEnvironment();
+    const env = this.env;
 
     var data = await Promise.all(
       options.targets.map(target => {
@@ -110,8 +108,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   async testDatasource() {
-    const env = this.getUrlEnvironment();
-    const urlHelper = new NodeDatumUrlHelper(env);
+    const urlHelper = new NodeDatumUrlHelper(this.env);
     return this.doRequest(urlHelper.listAllNodeIdsUrl())
       .then((res: any) => {
         return { status: 'success', message: 'Success' };

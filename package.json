@@ -22,7 +22,7 @@
     "@grafana/ui": "next",
     "@grafana/runtime": "next",
     "@types/lodash": "latest",
-    "solarnetwork-api-core": "^0.19.2"
+    "solarnetwork-api-core": "^0.19.3"
   },
   "engines": {
     "node": ">=12 <13"
