@@ -120,9 +120,10 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
           });
           return new MutableDataFrame({
             refId: target.refId,
+            name: target.source,
             fields: [
               { name: 'Time', values: times, type: FieldType.time },
-              { name: 'Value', values: values, type: FieldType.number },
+              { name: target.metric, values: values, type: FieldType.number },
             ],
           });
         });
