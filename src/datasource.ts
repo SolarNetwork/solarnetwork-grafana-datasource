@@ -1,4 +1,4 @@
-import { AuthorizationV2Builder, Environment, HttpHeaders, HttpMethod, DatumFilter, NodeDatumUrlHelper } from 'solarnetwork-api-core';
+import { AuthorizationV2Builder, Environment, HttpHeaders, HttpMethod, DatumFilter, NodeDatumUrlHelper, Aggregations } from 'solarnetwork-api-core';
 import * as CryptoJS from 'crypto-js';
 
 import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, MutableDataFrame, FieldType } from '@grafana/data';
@@ -103,12 +103,22 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     var data = await Promise.all(
       options.targets.map(target => {
         var urlHelper = new NodeDatumUrlHelper(env);
+
+        var dateDiff = (to.valueOf() - from.valueOf()) / (24 * 60 * 60 * 1000);
         const filter = new DatumFilter({
           nodeId: target.node,
           sourceId: target.source,
           startDate: from,
           endDate: to,
         });
+        if (dateDiff > 7) {
+          filter.aggregation = Aggregations.Hour;
+        } else if (dateDiff > 30) {
+          filter.aggregation = Aggregations.Day;
+        } else if (dateDiff > 366) {
+          filter.aggregation = Aggregations.Month;
+        }
+
         const url = urlHelper.listDatumUrl(filter);
 
         return this.doRequest(url).then(result => {
