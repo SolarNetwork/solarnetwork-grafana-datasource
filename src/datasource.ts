@@ -66,20 +66,19 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     return a.pathname + a.search;
   }
 
-  private authV2Builder(path, date): AuthorizationV2Builder {
+  private authV2Builder(path): AuthorizationV2Builder {
     var authBuilder = new AuthorizationV2Builder(this.token, this.env);
     return authBuilder
       .method(HttpMethod.GET)
       .url(path)
       .snDate(true)
-      .date(date);
+      .date(new Date());
   }
 
   private async doRequest(url): Promise<any> {
     var path = this.getPathFromUrl(url);
-    var me = this;
+    var authBuilder = this.authV2Builder(path);
     return await this.signingKey.then(signingKey => {
-      var authBuilder = me.authV2Builder(path, signingKey.date);
       var options = {
         url: url,
         headers: {
