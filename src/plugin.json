@@ -3,6 +3,8 @@
   "name": "SolarNetwork",
   "id": "revolve-energy-solarnetwork-datasource",
   "metrics": true,
+  "backend": true,
+  "executable": "revolve-energy-solarnetwork-backend",
   "info": {
     "description": "SolarNetwork integration & data source",
     "author": {

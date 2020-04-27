@@ -1,7 +1,7 @@
 import React, { PureComponent, ChangeEvent } from 'react';
 import { SecretFormField, FormField } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
-import { SolarNetworkDataSourceOptions } from './types';
+import { SolarNetworkDataSourceOptions, SolarNetworkDataSourceSecureOptions } from './types';
 
 interface Props extends DataSourcePluginOptionsEditorProps<SolarNetworkDataSourceOptions> {}
 
@@ -19,20 +19,23 @@ export class ConfigEditor extends PureComponent<Props, State> {
 
   onSecretChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { onOptionsChange, options } = this.props;
-    const jsonData = {
-      ...options.jsonData,
+    const secureJsonData = {
       secret: event.target.value,
     };
-    onOptionsChange({ ...options, jsonData });
+    onOptionsChange({ ...options, secureJsonData });
   };
 
   onResetSecret = () => {
     const { onOptionsChange, options } = this.props;
-    const jsonData = {
-      ...options.jsonData,
+    const secureJsonFields = {
+      ...options.secureJsonFields,
+      secret: false,
+    };
+    const secureJsonData = {
+      ...options.secureJsonData,
       secret: '',
     };
-    onOptionsChange({ ...options, jsonData });
+    onOptionsChange({ ...options, secureJsonFields, secureJsonData });
   };
 
   onHostChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -55,7 +58,8 @@ export class ConfigEditor extends PureComponent<Props, State> {
 
   render() {
     const { options } = this.props;
-    const { jsonData } = options;
+    const { jsonData, secureJsonFields } = options;
+    const secureJsonData = (options.secureJsonData || {}) as SolarNetworkDataSourceSecureOptions;
 
     return (
       <div className="gf-form-group">
@@ -72,8 +76,8 @@ export class ConfigEditor extends PureComponent<Props, State> {
         <div className="gf-form-inline">
           <div className="gf-form">
             <SecretFormField
-              isConfigured={jsonData.secret ? true : false}
-              value={jsonData.secret || ''}
+              isConfigured={(secureJsonFields && secureJsonFields.secret) as boolean}
+              value={secureJsonData.secret || ''}
               label="Secret"
               placeholder="Authorization secret"
               labelWidth={6}
