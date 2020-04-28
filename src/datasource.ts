@@ -78,7 +78,13 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   private async doRequest(url): Promise<any> {
     var path = this.getPathFromUrl(url);
     var authBuilder = this.authV2Builder(path);
+    var me = this;
     return await this.signingKey.then(signingKey => {
+      if (signingKey.date.toISOString().substr(0, 10) !== new Date().toISOString().substr(0, 10)) {
+        // Update signing key and re-call
+        me.signingKey = me.getSigningKey();
+        return me.doRequest(url);
+      }
       var options = {
         url: url,
         headers: {
