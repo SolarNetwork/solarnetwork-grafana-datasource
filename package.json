@@ -17,10 +17,10 @@
   "author": "Revolve Energy Limited",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@grafana/data": "next",
-    "@grafana/toolkit": "next",
-    "@grafana/ui": "next",
-    "@grafana/runtime": "next",
+    "@grafana/data": "latest",
+    "@grafana/toolkit": "latest",
+    "@grafana/ui": "latest",
+    "@grafana/runtime": "latest",
     "@types/lodash": "latest",
     "solarnetwork-api-core": "^0.20.0",
     "solarnetwork-datum-loader": "^0.10.3"
