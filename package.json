@@ -22,7 +22,8 @@
     "@grafana/ui": "next",
     "@grafana/runtime": "next",
     "@types/lodash": "latest",
-    "solarnetwork-api-core": ">=0.20.0"
+    "solarnetwork-api-core": "^0.20.0",
+    "solarnetwork-datum-loader": "^0.10.3"
   },
   "engines": {
     "node": ">=12 <13"

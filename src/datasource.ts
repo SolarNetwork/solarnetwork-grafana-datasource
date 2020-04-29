@@ -1,10 +1,17 @@
 import { AuthorizationV2Builder, Environment, HttpHeaders, HttpMethod, DatumFilter, NodeDatumUrlHelper, Aggregations } from 'solarnetwork-api-core';
+import { DatumLoader } from 'solarnetwork-datum-loader';
 import * as CryptoJS from 'crypto-js';
 
 import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, MutableDataFrame, FieldType } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
 
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions, SigningKeyInfo } from './types';
+
+const dayMilliseconds = 24 * 60 * 60 * 1000;
+
+function sameUTCDate(d1: Date, d2: Date): boolean {
+  return d1.toISOString().substr(0, 10) === d2.toISOString().substr(0, 10);
+}
 
 export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
   private token: string;
@@ -75,12 +82,29 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
       .date(new Date());
   }
 
+  private async datumRequest(filter: DatumFilter): Promise<any> {
+    var me = this;
+    return await this.signingKey.then(signingKey => {
+      if (!sameUTCDate(signingKey.date, new Date())) {
+        // Update signing key and re-call
+        me.signingKey = me.getSigningKey();
+        return me.datumRequest(filter);
+      }
+      var urlHelper = new NodeDatumUrlHelper(me.env);
+      var authBuilder = me.authV2Builder('');
+      authBuilder.signingKey = signingKey.key;
+      authBuilder.signingKeyExpiration = new Date(signingKey.date.valueOf() + 7 * dayMilliseconds);
+      let loader = new DatumLoader(urlHelper, filter, authBuilder);
+      return loader.fetch();
+    });
+  }
+
   private async doRequest(url): Promise<any> {
     var path = this.getPathFromUrl(url);
     var authBuilder = this.authV2Builder(path);
     var me = this;
     return await this.signingKey.then(signingKey => {
-      if (signingKey.date.toISOString().substr(0, 10) !== new Date().toISOString().substr(0, 10)) {
+      if (!sameUTCDate(signingKey.date, new Date())) {
         // Update signing key and re-call
         me.signingKey = me.getSigningKey();
         return me.doRequest(url);
@@ -91,7 +115,6 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
           Accept: 'application/json',
         },
         method: HttpMethod.GET,
-        showSuccessAlert: true,
       };
       options.headers[HttpHeaders.X_SN_DATE] = authBuilder.requestDateHeaderValue;
       options.headers[HttpHeaders.AUTHORIZATION] = authBuilder.buildWithKey(signingKey.key);
@@ -103,13 +126,10 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     const { range } = options;
     const from = range!.from;
     const to = range!.to;
-    const env = this.env;
 
     var data = await Promise.all(
       options.targets.map(target => {
-        var urlHelper = new NodeDatumUrlHelper(env);
-
-        var dateDiff = (to.valueOf() - from.valueOf()) / (24 * 60 * 60 * 1000);
+        var dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
         const filter = new DatumFilter({
           nodeId: target.node,
           sourceId: target.source,
@@ -124,12 +144,10 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
           filter.aggregation = Aggregations.Month;
         }
 
-        const url = urlHelper.listDatumUrl(filter);
-
-        return this.doRequest(url).then(result => {
+        return this.datumRequest(filter).then(results => {
           let times: number[] = [];
           let values: number[] = [];
-          result.data.data.results.forEach(datum => {
+          results.forEach(datum => {
             times.push(Date.parse(datum.created));
             values.push(datum[target.metric]);
           });
