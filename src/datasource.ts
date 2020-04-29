@@ -161,12 +161,12 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     const to = range!.to;
     const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
     let aggregation: Aggregation = undefined;
-    if (dateDiff > 7) {
-      aggregation = Aggregations.Hour;
+    if (dateDiff > 366) {
+      aggregation = Aggregations.Month;
     } else if (dateDiff > 30) {
       aggregation = Aggregations.Day;
-    } else if (dateDiff > 366) {
-      aggregation = Aggregations.Month;
+    } else if (dateDiff > 7) {
+      aggregation = Aggregations.Hour;
     }
 
     let nodeRequests: Map<number, Map<string, SourceRequestInfo[]>> = new Map();
