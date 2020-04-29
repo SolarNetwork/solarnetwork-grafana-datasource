@@ -1,19 +1,35 @@
 import React, { PureComponent, ChangeEvent } from 'react';
-import { FormField } from '@grafana/ui';
-import { QueryEditorProps } from '@grafana/data';
+import { FormField, Select } from '@grafana/ui';
+import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
 
 type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSourceOptions>;
 
-interface State {}
+interface State {
+  nodeList: Array<SelectableValue<number>>;
+}
 
 export class QueryEditor extends PureComponent<Props, State> {
-  onComponentDidMount() {}
+  constructor(props: Props) {
+    super(props);
 
-  onNodeChange = (event: ChangeEvent<HTMLInputElement>) => {
+    this.state = {
+      nodeList: [],
+    };
+    var me = this;
+    this.props.datasource.getNodeList().then(values => {
+      values.forEach(value => {
+        me.state.nodeList.push({ value: value, label: String(value) });
+      });
+    });
+  }
+
+  onNodeChange = (option: SelectableValue<number>) => {
     const { onChange, query, onRunQuery } = this.props;
-    onChange({ ...query, node: parseFloat(event.target.value) });
+    if (option.value) {
+      onChange({ ...query, node: option.value });
+    }
     onRunQuery(); // executes the query
   };
 
@@ -32,7 +48,14 @@ export class QueryEditor extends PureComponent<Props, State> {
   render() {
     return (
       <div className="gf-form">
-        <FormField width={4} value={this.props.query.node} onChange={this.onNodeChange} label="Node ID" type="number" step="1"></FormField>
+        <div className="gf-form-label">NodeID</div>
+        <Select
+          width={8}
+          isSearchable={false}
+          value={{ value: this.props.query.node, label: String(this.props.query.node) }}
+          options={this.state.nodeList}
+          onChange={this.onNodeChange}
+        />
         <FormField width={8} value={this.props.query.source} onChange={this.onSourceChange} label="Source" type="string"></FormField>
         <FormField width={8} value={this.props.query.metric} onChange={this.onMetricChange} label="Metric" type="string"></FormField>
       </div>

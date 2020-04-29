@@ -16,6 +16,7 @@ function sameUTCDate(d1: Date, d2: Date): boolean {
 export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
   private token: string;
   private signingKey: Promise<SigningKeyInfo>;
+  private nodeList: Promise<number[]>;
   private env: Environment;
 
   constructor(instanceSettings: DataSourceInstanceSettings<SolarNetworkDataSourceOptions>) {
@@ -25,6 +26,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
 
     this.env = this.createEnvironment(settingsData.host, undefined);
     this.signingKey = this.getSigningKey();
+    this.nodeList = this.populateNodeList();
   }
 
   private async getSigningKey(): Promise<SigningKeyInfo> {
@@ -44,6 +46,22 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
           date: new Date(result.data.results.sk.meta.date),
         };
       });
+  }
+
+  private async populateNodeList(): Promise<number[]> {
+    const urlHelper = new NodeDatumUrlHelper(this.env);
+    return this.doRequest(urlHelper.listAllNodeIdsUrl()).then((result: any) => {
+      let nodeList: number[] = [];
+      console.log(result);
+      result.data.data.forEach(node => {
+        nodeList.push(node);
+      });
+      return nodeList;
+    });
+  }
+
+  async getNodeList(): Promise<number[]> {
+    return await this.nodeList;
   }
 
   private createEnvironment(host, proxy) {
