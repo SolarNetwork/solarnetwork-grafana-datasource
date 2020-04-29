@@ -213,7 +213,11 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
             if (!series.has(datum.sourceId)) {
               var metrics: Set<string> = new Set<string>();
               sourceRequests.forEach((requests, source) => {
-                var regex = new RegExp('^' + source.replace('*', '([^/]*)') + '$');
+                var r = '^' + source + '$';
+                r = r.replace(/([^*])\*([^*])/g, '$1([^/]*)$2');
+                r = r.replace(/(\*\*)/g, '(.*)');
+                r = r.replace(/\?/g, '([^/])');
+                var regex = new RegExp(r);
                 if (source.match(regex)) {
                   requests.forEach(request => {
                     metrics.add(request.metric);
