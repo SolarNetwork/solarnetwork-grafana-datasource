@@ -8,6 +8,7 @@ type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSou
 
 interface State {
   nodeList: Array<SelectableValue<number>>;
+  selectedNode?: SelectableValue<number>;
 }
 
 export class QueryEditor extends PureComponent<Props, State> {
@@ -16,11 +17,15 @@ export class QueryEditor extends PureComponent<Props, State> {
 
     this.state = {
       nodeList: [],
+      selectedNode: undefined,
     };
     var me = this;
     this.props.datasource.getNodeList().then(values => {
       values.forEach(value => {
         me.state.nodeList.push({ value: value, label: String(value) });
+        if (value === me.props.query.node) {
+          me.setState({ selectedNode: me.state.nodeList[me.state.nodeList.length - 1] });
+        }
       });
     });
   }
@@ -29,6 +34,7 @@ export class QueryEditor extends PureComponent<Props, State> {
     const { onChange, query, onRunQuery } = this.props;
     if (option.value) {
       onChange({ ...query, node: option.value });
+      this.setState({ selectedNode: option });
     }
     onRunQuery(); // executes the query
   };
@@ -49,13 +55,7 @@ export class QueryEditor extends PureComponent<Props, State> {
     return (
       <div className="gf-form">
         <div className="gf-form-label">NodeID</div>
-        <Select
-          width={8}
-          isSearchable={false}
-          value={{ value: this.props.query.node, label: String(this.props.query.node) }}
-          options={this.state.nodeList}
-          onChange={this.onNodeChange}
-        />
+        <Select width={8} isSearchable={false} value={this.state.selectedNode} options={this.state.nodeList} onChange={this.onNodeChange} />
         <FormField width={8} value={this.props.query.source} onChange={this.onSourceChange} label="Source" type="string"></FormField>
         <FormField width={8} value={this.props.query.metric} onChange={this.onMetricChange} label="Metric" type="string"></FormField>
       </div>

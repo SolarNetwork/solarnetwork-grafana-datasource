@@ -52,7 +52,6 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     const urlHelper = new NodeDatumUrlHelper(this.env);
     return this.doRequest(urlHelper.listAllNodeIdsUrl()).then((result: any) => {
       let nodeList: number[] = [];
-      console.log(result);
       result.data.data.forEach(node => {
         nodeList.push(node);
       });
