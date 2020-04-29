@@ -1,6 +1,16 @@
-import { AuthorizationV2Builder, Environment, HttpHeaders, HttpMethod, DatumFilter, NodeDatumUrlHelper, Aggregations } from 'solarnetwork-api-core';
+import {
+  AuthorizationV2Builder,
+  Environment,
+  HttpHeaders,
+  HttpMethod,
+  DatumFilter,
+  NodeDatumUrlHelper,
+  Aggregations,
+  Aggregation,
+} from 'solarnetwork-api-core';
 import { DatumLoader } from 'solarnetwork-datum-loader';
 import * as CryptoJS from 'crypto-js';
+import { flatten } from 'lodash';
 
 import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, MutableDataFrame, FieldType } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
@@ -11,6 +21,11 @@ const dayMilliseconds = 24 * 60 * 60 * 1000;
 
 function sameUTCDate(d1: Date, d2: Date): boolean {
   return d1.toISOString().substr(0, 10) === d2.toISOString().substr(0, 10);
+}
+
+interface SourceRequestInfo {
+  refId: string;
+  metric: string;
 }
 
 export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
@@ -145,42 +160,97 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     const { range } = options;
     const from = range!.from;
     const to = range!.to;
+    const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
+    let aggregation: Aggregation = undefined;
+    if (dateDiff > 7) {
+      aggregation = Aggregations.Hour;
+    } else if (dateDiff > 30) {
+      aggregation = Aggregations.Day;
+    } else if (dateDiff > 366) {
+      aggregation = Aggregations.Month;
+    }
+
+    let nodeRequests: Map<number, Map<string, SourceRequestInfo[]>> = new Map();
+    options.targets.forEach(target => {
+      if (!nodeRequests.has(target.node)) {
+        nodeRequests.set(target.node, new Map<string, SourceRequestInfo[]>());
+      }
+      var sourceRequests = nodeRequests.get(target.node);
+
+      if (sourceRequests) {
+        if (!sourceRequests.has(target.source)) {
+          sourceRequests.set(target.source, []);
+        }
+
+        var requests = sourceRequests.get(target.source);
+        if (requests) {
+          requests.push({
+            refId: target.refId,
+            metric: target.metric,
+          });
+        }
+      }
+    });
 
     var data = await Promise.all(
-      options.targets.map(target => {
-        var dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
-        const filter = new DatumFilter({
-          nodeId: target.node,
-          sourceId: target.source,
+      [...nodeRequests.entries()].map(([node, sourceRequests]) => {
+        let sources: string[] = [];
+        sourceRequests.forEach((requests, source) => {
+          sources.push(source);
+        });
+        let filter: DatumFilter = new DatumFilter({
+          nodeId: node,
+          sourceIds: sources,
           startDate: from,
           endDate: to,
         });
-        if (dateDiff > 7) {
-          filter.aggregation = Aggregations.Hour;
-        } else if (dateDiff > 30) {
-          filter.aggregation = Aggregations.Day;
-        } else if (dateDiff > 366) {
-          filter.aggregation = Aggregations.Month;
+        if (aggregation) {
+          filter.aggregation = aggregation;
         }
 
         return this.datumRequest(filter).then(results => {
-          let times: number[] = [];
-          let values: number[] = [];
+          let series: Map<string, any> = new Map<string, any>();
           results.forEach(datum => {
-            times.push(Date.parse(datum.created));
-            values.push(datum[target.metric]);
+            if (!series.has(datum.sourceId)) {
+              var metrics: Set<string> = new Set<string>();
+              sourceRequests.forEach((requests, source) => {
+                var regex = new RegExp('^' + source.replace('*', '([^/]*)') + '$');
+                if (source.match(regex)) {
+                  requests.forEach(request => {
+                    metrics.add(request.metric);
+                  });
+                }
+              });
+              let frame = {
+                name: datum.sourceId,
+                fields: [{ name: 'Time', values: [], type: FieldType.time }],
+              };
+              metrics.forEach(metric => {
+                frame.fields.push({
+                  name: metric,
+                  values: [],
+                  type: FieldType.number,
+                });
+              });
+              series.set(datum.sourceId, frame);
+            }
+            var s = series.get(datum.sourceId);
+            if (s) {
+              s.fields.forEach(field => {
+                if (field.name === 'Time') {
+                  field.values.push(Date.parse(datum.created));
+                } else {
+                  field.values.push(datum[field.name]);
+                }
+              });
+            }
           });
-          return new MutableDataFrame({
-            refId: target.refId,
-            name: target.source,
-            fields: [
-              { name: 'Time', values: times, type: FieldType.time },
-              { name: target.metric, values: values, type: FieldType.number },
-            ],
+          return [...series.entries()].map(([source, frame]) => {
+            return new MutableDataFrame(frame);
           });
         });
       })
-    );
+    ).then(flatten);
     return { data };
   }
 
