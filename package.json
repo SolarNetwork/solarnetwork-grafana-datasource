@@ -26,6 +26,6 @@
     "solarnetwork-datum-loader": "^0.10.3"
   },
   "engines": {
-    "node": ">=12 <13"
+    "node": ">=10 <13"
   }
 }
