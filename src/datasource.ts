@@ -73,11 +73,13 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     return a.pathname + a.search;
   }
 
-  private authV2Builder(path): AuthorizationV2Builder {
+  private authV2Builder(path?: string): AuthorizationV2Builder {
     var authBuilder = new AuthorizationV2Builder(this.token, this.env);
+    if (path) {
+      authBuilder.path(path);
+    }
     return authBuilder
       .method(HttpMethod.GET)
-      .url(path)
       .snDate(true)
       .date(new Date());
   }
@@ -91,7 +93,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
         return me.datumRequest(filter);
       }
       var urlHelper = new NodeDatumUrlHelper(me.env);
-      var authBuilder = me.authV2Builder('');
+      var authBuilder = me.authV2Builder();
       authBuilder.signingKey = signingKey.key;
       authBuilder.signingKeyExpiration = new Date(signingKey.date.valueOf() + 7 * dayMilliseconds);
       let loader = new DatumLoader(urlHelper, filter, authBuilder);
