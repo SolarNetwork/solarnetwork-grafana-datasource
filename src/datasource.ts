@@ -126,8 +126,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
       }
       var urlHelper = new NodeDatumUrlHelper(me.env);
       var authBuilder = me.authV2Builder();
-      authBuilder.signingKey = signingKey.key;
-      authBuilder.signingKeyExpiration = new Date(signingKey.date.valueOf() + 7 * dayMilliseconds);
+      authBuilder.key(signingKey.key, signingKey.date);
       let loader = new DatumLoader(urlHelper, filter, authBuilder);
       return loader.fetch();
     });
