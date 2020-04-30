@@ -211,14 +211,20 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   private async combiningDatumQuery(from, to, aggregation, combiningType, target): Promise<MutableDataFrame[]> {
     let combiName: string = combiningType.name;
     let filter: DatumFilter = new DatumFilter({
+      nodeIds: target.nodeIds,
+      sourceIds: target.sourceIds,
       combiningType: combiningType,
-      nodeIdMaps: new Map<number, Set<number>>([[-1, new Set<number>(target.nodeIds)]]),
       sourceIdMaps: new Map<string, Set<string>>([[combiName, new Set<string>(target.sourceIds)]]),
       startDate: from,
       endDate: to,
     });
+    if (target.nodeIds.length > 1) {
+      filter.nodeIdMaps = new Map<number, Set<number>>([[-1, new Set<number>(target.nodeIds)]]);
+    }
     if (aggregation) {
       filter.aggregation = aggregation;
+    } else {
+      filter.aggregation = Aggregations.FiveMinute;
     }
     target.nodeIds = [-1];
     target.sourceIds = ['Sum'];
