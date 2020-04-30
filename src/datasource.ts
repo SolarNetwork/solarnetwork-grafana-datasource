@@ -25,7 +25,8 @@ import { getBackendSrv } from '@grafana/runtime';
 
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions, SigningKeyInfo } from './types';
 
-const dayMilliseconds = 24 * 60 * 60 * 1000;
+const minuteMilliseconds = 60 * 1000;
+const dayMilliseconds = 24 * 60 * minuteMilliseconds;
 
 function sameUTCDate(d1: Date, d2: Date): boolean {
   return d1.toISOString().substr(0, 10) === d2.toISOString().substr(0, 10);
@@ -234,7 +235,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   async query(options: DataQueryRequest<SolarNetworkQuery>): Promise<DataQueryResponse> {
     const { range } = options;
     const from = range!.from;
-    const to = range!.to;
+    const to = new Date(range!.to.valueOf() + minuteMilliseconds);
     const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
     let aggregation: Aggregation = undefined;
     if (dateDiff > 366) {
