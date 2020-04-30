@@ -7,11 +7,20 @@ import {
   NodeDatumUrlHelper,
   Aggregations,
   Aggregation,
+  CombiningType,
 } from 'solarnetwork-api-core';
 import { DatumLoader } from 'solarnetwork-datum-loader';
 import * as CryptoJS from 'crypto-js';
+import { flatten } from 'lodash';
 
-import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, MutableDataFrame, FieldType } from '@grafana/data';
+import {
+  DataQueryRequest,
+  DataQueryResponse,
+  DataSourceApi,
+  DataSourceInstanceSettings,
+  MutableDataFrame,
+  FieldType,
+} from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
 
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions, SigningKeyInfo } from './types';
@@ -20,11 +29,6 @@ const dayMilliseconds = 24 * 60 * 60 * 1000;
 
 function sameUTCDate(d1: Date, d2: Date): boolean {
   return d1.toISOString().substr(0, 10) === d2.toISOString().substr(0, 10);
-}
-
-interface SourceRequestInfo {
-  refId: string;
-  metric: string;
 }
 
 export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
@@ -154,81 +158,18 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     });
   }
 
-  async query(options: DataQueryRequest<SolarNetworkQuery>): Promise<DataQueryResponse> {
-    const { range } = options;
-    const from = range!.from;
-    const to = range!.to;
-    const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
-    let aggregation: Aggregation = undefined;
-    if (dateDiff > 366) {
-      aggregation = Aggregations.Month;
-    } else if (dateDiff > 30) {
-      aggregation = Aggregations.Day;
-    } else if (dateDiff > 7) {
-      aggregation = Aggregations.Hour;
-    }
-
-    let nodes: number[] = [];
-    let sources: string[] = [];
-    let nodeRequests: Map<number, Map<string, SourceRequestInfo[]>> = new Map();
-    options.targets.forEach(target => {
-      if (!nodeRequests.has(target.node)) {
-        nodeRequests.set(target.node, new Map<string, SourceRequestInfo[]>());
-        nodes.push(target.node);
-      }
-      var sourceRequests = nodeRequests.get(target.node);
-
-      if (sourceRequests) {
-        if (!sourceRequests.has(target.source)) {
-          sourceRequests.set(target.source, []);
-          sources.push(target.source);
-        }
-
-        var requests = sourceRequests.get(target.source);
-        if (requests) {
-          requests.push({
-            refId: target.refId,
-            metric: target.metric,
-          });
-        }
-      }
-    });
-
-    let filter: DatumFilter = new DatumFilter({
-      nodeIds: nodes,
-      sourceIds: sources,
-      startDate: from,
-      endDate: to,
-    });
-    if (aggregation) {
-      filter.aggregation = aggregation;
-    }
-
-    var data = await this.datumRequest(filter).then(results => {
+  private async fetchDatumResult(filter, target): Promise<MutableDataFrame[]> {
+    return this.datumRequest(filter).then(results => {
       let series: Map<string, any> = new Map<string, any>();
       results.forEach(datum => {
-        const seriesName = nodes.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
+        const seriesName = target.nodeIds.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
         if (!series.has(seriesName)) {
-          var metrics: Set<string> = new Set<string>();
-          nodeRequests.forEach((sourceRequests, node) => {
-            sourceRequests.forEach((requests, source) => {
-              var r = '^' + source + '$';
-              r = r.replace(/([^*])\*([^*])/g, '$1([^/]*)$2');
-              r = r.replace(/(\*\*)/g, '(.*)');
-              r = r.replace(/\?/g, '([^/])');
-              var regex = new RegExp(r);
-              if (source.match(regex)) {
-                requests.forEach(request => {
-                  metrics.add(request.metric);
-                });
-              }
-            });
-          });
           let frame = {
+            refId: target.refId,
             name: datum.sourceId,
             fields: [{ name: 'Time', values: [], type: FieldType.time }],
           };
-          metrics.forEach(metric => {
+          target.metrics.forEach(metric => {
             frame.fields.push({
               name: metric,
               values: [],
@@ -252,6 +193,62 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
         return new MutableDataFrame(frame);
       });
     });
+  }
+
+  private async standardDatumQuery(from, to, aggregation, target): Promise<MutableDataFrame[]> {
+    let filter: DatumFilter = new DatumFilter({
+      nodeIds: target.nodeIds,
+      sourceIds: target.sourceIds,
+      startDate: from,
+      endDate: to,
+    });
+    if (aggregation) {
+      filter.aggregation = aggregation;
+    }
+    return this.fetchDatumResult(filter, target);
+  }
+
+  private async combiningDatumQuery(from, to, aggregation, combiningType, target): Promise<MutableDataFrame[]> {
+    let combiName: string = combiningType.name;
+    let filter: DatumFilter = new DatumFilter({
+      combiningType: combiningType,
+      nodeIdMaps: new Map<number, Set<number>>([[-1, new Set<number>(target.nodeIds)]]),
+      sourceIdMaps: new Map<string, Set<string>>([[combiName, new Set<string>(target.sourceIds)]]),
+      startDate: from,
+      endDate: to,
+    });
+    if (aggregation) {
+      filter.aggregation = aggregation;
+    }
+    target.nodeIds = [-1];
+    target.sourceIds = ['Sum'];
+    return this.fetchDatumResult(filter, target);
+  }
+
+  async query(options: DataQueryRequest<SolarNetworkQuery>): Promise<DataQueryResponse> {
+    const { range } = options;
+    const from = range!.from;
+    const to = range!.to;
+    const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
+    let aggregation: Aggregation = undefined;
+    if (dateDiff > 366) {
+      aggregation = Aggregations.Month;
+    } else if (dateDiff > 30) {
+      aggregation = Aggregations.Day;
+    } else if (dateDiff > 7) {
+      aggregation = Aggregations.Hour;
+    }
+
+    var data = await Promise.all(
+      options.targets.map(target => {
+        if (target.combiningType === 'none') {
+          return this.standardDatumQuery(from, to, aggregation, target);
+        } else {
+          let combiningType: CombiningType = CombiningType.valueOf(target.combiningType);
+          return this.combiningDatumQuery(from, to, aggregation, combiningType, target);
+        }
+      })
+    ).then(flatten);
     return { data };
   }
 

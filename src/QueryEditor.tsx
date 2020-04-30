@@ -1,14 +1,18 @@
-import React, { PureComponent, ChangeEvent } from 'react';
-import { FormField, Select } from '@grafana/ui';
+import React, { PureComponent } from 'react';
+import { Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
+import { CombiningType } from 'solarnetwork-api-core';
 
 type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSourceOptions>;
 
 interface State {
-  nodeList: Array<SelectableValue<number>>;
-  selectedNode?: SelectableValue<number>;
+  nodeIds: Array<SelectableValue<number>>;
+  selectedNodeIds: Array<SelectableValue<number>>;
+  sourceIds: Array<SelectableValue<string>>;
+  metrics: Array<SelectableValue<string>>;
+  combiningTypes: Array<SelectableValue<string>>;
 }
 
 export class QueryEditor extends PureComponent<Props, State> {
@@ -16,48 +20,128 @@ export class QueryEditor extends PureComponent<Props, State> {
     super(props);
 
     this.state = {
-      nodeList: [],
-      selectedNode: undefined,
+      nodeIds: [],
+      selectedNodeIds: [],
+      sourceIds: [],
+      metrics: [],
+      combiningTypes: [],
     };
+
     var me = this;
     this.props.datasource.getNodeList().then(values => {
       values.forEach(value => {
-        me.state.nodeList.push({ value: value, label: String(value) });
-        if (value === me.props.query.node) {
-          me.setState({ selectedNode: me.state.nodeList[me.state.nodeList.length - 1] });
+        me.state.nodeIds.push({ value: value, label: String(value) });
+        if (this.props.query.nodeIds.includes(value)) {
+          me.state.selectedNodeIds.push(me.state.nodeIds[me.state.nodeIds.length - 1]);
         }
       });
     });
+
+    if (this.props.query.sourceIds) {
+      this.props.query.sourceIds.forEach(sourceId => {
+        this.state.sourceIds.push({ value: sourceId, label: sourceId });
+      });
+    }
+
+    if (this.props.query.metrics) {
+      this.props.query.metrics.forEach(metric => {
+        this.state.metrics.push({ value: metric, label: metric });
+      });
+    }
+
+    this.state.combiningTypes.push({ value: 'none', label: 'None' });
+    CombiningType.enumValues().forEach(value => {
+      this.state.combiningTypes.push({ value: value.name, label: value.name });
+    });
   }
 
-  onNodeChange = (option: SelectableValue<number>) => {
-    const { onChange, query, onRunQuery } = this.props;
+  onNodeIdsChange = (v: Array<SelectableValue<number>>) => {
+    const { onChange, query } = this.props;
+    onChange({ ...query, nodeIds: v.map((v: any) => v.value) });
+    //this.setState({ selectedNode: option });
+    this.tryQuery(); // executes the query
+  };
+
+  onSourceIdsChange = (v: Array<SelectableValue<string>>) => {
+    const { onChange, query } = this.props;
+    onChange({ ...query, sourceIds: v.map((v: any) => v.value) });
+    this.tryQuery(); // executes the query
+  };
+
+  onSourceIdsCreateOption = (v: string) => {
+    const { onChange, query } = this.props;
+    var sourceIds = query.sourceIds || [];
+    onChange({ ...query, sourceIds: sourceIds.concat(v) });
+    this.setState({ sourceIds: this.state.sourceIds.concat({ value: v, label: v }) });
+    this.tryQuery(); // executes the query
+  };
+
+  onMetricsChange = (v: Array<SelectableValue<string>>) => {
+    const { onChange, query } = this.props;
+    onChange({ ...query, metrics: v.map((v: any) => v.value) });
+    this.tryQuery(); // executes the query
+  };
+
+  onMetricsCreateOption = (v: string) => {
+    const { onChange, query } = this.props;
+    var metrics = query.metrics || [];
+    onChange({ ...query, metrics: metrics.concat(v) });
+    this.setState({ metrics: this.state.metrics.concat({ value: v, label: v }) });
+    this.tryQuery(); // executes the query
+  };
+
+  onCombiningTypeChange = (option: SelectableValue<string>) => {
+    const { onChange, query } = this.props;
     if (option.value) {
-      onChange({ ...query, node: option.value });
-      this.setState({ selectedNode: option });
+      onChange({ ...query, combiningType: option.value });
     }
-    onRunQuery(); // executes the query
+    this.tryQuery(); // executes the query
   };
 
-  onSourceChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onChange, query, onRunQuery } = this.props;
-    onChange({ ...query, source: event.target.value });
-    onRunQuery(); // executes the query
-  };
-
-  onMetricChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { onChange, query, onRunQuery } = this.props;
-    onChange({ ...query, metric: event.target.value });
-    onRunQuery(); // executes the query
+  tryQuery = () => {
+    const { query, onRunQuery } = this.props;
+    if (!query.nodeIds || !query.nodeIds.length) {
+      return;
+    }
+    if (!query.sourceIds || !query.sourceIds.length) {
+      return;
+    }
+    if (!query.metrics || !query.metrics.length) {
+      return;
+    }
+    onRunQuery();
   };
 
   render() {
     return (
       <div className="gf-form">
-        <div className="gf-form-label">NodeID</div>
-        <Select width={8} isSearchable={false} value={this.state.selectedNode} options={this.state.nodeList} onChange={this.onNodeChange} />
-        <FormField width={8} value={this.props.query.source} onChange={this.onSourceChange} label="Source" type="string"></FormField>
-        <FormField width={8} value={this.props.query.metric} onChange={this.onMetricChange} label="Metric" type="string"></FormField>
+        <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
+        <MultiSelect value={this.props.query.nodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
+
+        <InlineFormLabel width={7}>Source Ids</InlineFormLabel>
+        <MultiSelect
+          allowCustomValue
+          value={this.props.query.sourceIds}
+          options={this.state.sourceIds}
+          onChange={this.onSourceIdsChange}
+          onCreateOption={this.onSourceIdsCreateOption}
+        />
+
+        <InlineFormLabel width={7}>Metrics</InlineFormLabel>
+        <MultiSelect
+          allowCustomValue
+          value={this.props.query.metrics}
+          options={this.state.metrics}
+          onChange={this.onMetricsChange}
+          onCreateOption={this.onMetricsCreateOption}
+        />
+
+        <InlineFormLabel width={7}>Combining Type</InlineFormLabel>
+        <Select
+          value={this.props.query.combiningType}
+          options={this.state.combiningTypes}
+          onChange={this.onCombiningTypeChange}
+        />
       </div>
     );
   }

@@ -11,13 +11,14 @@ export interface SolarNetworkDataSourceSecureOptions {
   secret: string;
 }
 
-export interface SolarNetworkQuery extends DataQuery {
-  node: number;
-  source: string;
-  metric: string;
-}
-
 export interface SigningKeyInfo {
   key: WordArray;
   date: Date;
+}
+
+export interface SolarNetworkQuery extends DataQuery {
+  nodeIds: number[];
+  sourceIds: string[];
+  metrics: string[];
+  combiningType: string;
 }

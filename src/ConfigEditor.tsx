@@ -1,5 +1,5 @@
 import React, { PureComponent, ChangeEvent } from 'react';
-import { SecretFormField, FormField } from '@grafana/ui';
+import { LegacyForms } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { SolarNetworkDataSourceOptions, SolarNetworkDataSourceSecureOptions } from './types';
 
@@ -64,7 +64,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
     return (
       <div className="gf-form-group">
         <div className="gf-form">
-          <FormField
+          <LegacyForms.FormField
             label="Token"
             labelWidth={6}
             inputWidth={20}
@@ -75,7 +75,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
         </div>
         <div className="gf-form-inline">
           <div className="gf-form">
-            <SecretFormField
+            <LegacyForms.SecretFormField
               isConfigured={(secureJsonFields && secureJsonFields.secret) as boolean}
               value={secureJsonData.secret || ''}
               label="Secret"
@@ -88,7 +88,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
           </div>
         </div>
         <div className="gf-form">
-          <FormField
+          <LegacyForms.FormField
             label="Host"
             labelWidth={6}
             inputWidth={30}
@@ -99,7 +99,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
           />
         </div>
         <div className="gf-form">
-          <FormField
+          <LegacyForms.FormField
             label="Proxy"
             labelWidth={6}
             inputWidth={30}
