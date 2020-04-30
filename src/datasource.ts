@@ -10,7 +10,6 @@ import {
 } from 'solarnetwork-api-core';
 import { DatumLoader } from 'solarnetwork-datum-loader';
 import * as CryptoJS from 'crypto-js';
-import { flatten } from 'lodash';
 
 import { DataQueryRequest, DataQueryResponse, DataSourceApi, DataSourceInstanceSettings, MutableDataFrame, FieldType } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
@@ -169,16 +168,20 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
       aggregation = Aggregations.Hour;
     }
 
+    let nodes: number[] = [];
+    let sources: string[] = [];
     let nodeRequests: Map<number, Map<string, SourceRequestInfo[]>> = new Map();
     options.targets.forEach(target => {
       if (!nodeRequests.has(target.node)) {
         nodeRequests.set(target.node, new Map<string, SourceRequestInfo[]>());
+        nodes.push(target.node);
       }
       var sourceRequests = nodeRequests.get(target.node);
 
       if (sourceRequests) {
         if (!sourceRequests.has(target.source)) {
           sourceRequests.set(target.source, []);
+          sources.push(target.source);
         }
 
         var requests = sourceRequests.get(target.source);
@@ -191,69 +194,64 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
       }
     });
 
-    var data = await Promise.all(
-      [...nodeRequests.entries()].map(([node, sourceRequests]) => {
-        let sources: string[] = [];
-        sourceRequests.forEach((requests, source) => {
-          sources.push(source);
-        });
-        let filter: DatumFilter = new DatumFilter({
-          nodeId: node,
-          sourceIds: sources,
-          startDate: from,
-          endDate: to,
-        });
-        if (aggregation) {
-          filter.aggregation = aggregation;
-        }
+    let filter: DatumFilter = new DatumFilter({
+      nodeIds: nodes,
+      sourceIds: sources,
+      startDate: from,
+      endDate: to,
+    });
+    if (aggregation) {
+      filter.aggregation = aggregation;
+    }
 
-        return this.datumRequest(filter).then(results => {
-          let series: Map<string, any> = new Map<string, any>();
-          results.forEach(datum => {
-            if (!series.has(datum.sourceId)) {
-              var metrics: Set<string> = new Set<string>();
-              sourceRequests.forEach((requests, source) => {
-                var r = '^' + source + '$';
-                r = r.replace(/([^*])\*([^*])/g, '$1([^/]*)$2');
-                r = r.replace(/(\*\*)/g, '(.*)');
-                r = r.replace(/\?/g, '([^/])');
-                var regex = new RegExp(r);
-                if (source.match(regex)) {
-                  requests.forEach(request => {
-                    metrics.add(request.metric);
-                  });
-                }
-              });
-              let frame = {
-                name: datum.sourceId,
-                fields: [{ name: 'Time', values: [], type: FieldType.time }],
-              };
-              metrics.forEach(metric => {
-                frame.fields.push({
-                  name: metric,
-                  values: [],
-                  type: FieldType.number,
+    var data = await this.datumRequest(filter).then(results => {
+      let series: Map<string, any> = new Map<string, any>();
+      results.forEach(datum => {
+        const seriesName = nodes.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
+        if (!series.has(seriesName)) {
+          var metrics: Set<string> = new Set<string>();
+          nodeRequests.forEach((sourceRequests, node) => {
+            sourceRequests.forEach((requests, source) => {
+              var r = '^' + source + '$';
+              r = r.replace(/([^*])\*([^*])/g, '$1([^/]*)$2');
+              r = r.replace(/(\*\*)/g, '(.*)');
+              r = r.replace(/\?/g, '([^/])');
+              var regex = new RegExp(r);
+              if (source.match(regex)) {
+                requests.forEach(request => {
+                  metrics.add(request.metric);
                 });
-              });
-              series.set(datum.sourceId, frame);
-            }
-            var s = series.get(datum.sourceId);
-            if (s) {
-              s.fields.forEach(field => {
-                if (field.name === 'Time') {
-                  field.values.push(Date.parse(datum.created));
-                } else {
-                  field.values.push(datum[field.name]);
-                }
-              });
+              }
+            });
+          });
+          let frame = {
+            name: datum.sourceId,
+            fields: [{ name: 'Time', values: [], type: FieldType.time }],
+          };
+          metrics.forEach(metric => {
+            frame.fields.push({
+              name: metric,
+              values: [],
+              type: FieldType.number,
+            });
+          });
+          series.set(seriesName, frame);
+        }
+        var s = series.get(seriesName);
+        if (s) {
+          s.fields.forEach(field => {
+            if (field.name === 'Time') {
+              field.values.push(Date.parse(datum.created));
+            } else {
+              field.values.push(datum[field.name]);
             }
           });
-          return [...series.entries()].map(([source, frame]) => {
-            return new MutableDataFrame(frame);
-          });
-        });
-      })
-    ).then(flatten);
+        }
+      });
+      return [...series.entries()].map(([source, frame]) => {
+        return new MutableDataFrame(frame);
+      });
+    });
     return { data };
   }
 
