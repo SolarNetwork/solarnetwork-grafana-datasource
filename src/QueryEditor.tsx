@@ -16,26 +16,16 @@ interface State {
 }
 
 export class QueryEditor extends PureComponent<Props, State> {
+  state: State = {
+    nodeIds: [],
+    selectedNodeIds: [],
+    sourceIds: [],
+    metrics: [],
+    combiningTypes: [],
+  };
+
   constructor(props: Props) {
     super(props);
-
-    this.state = {
-      nodeIds: [],
-      selectedNodeIds: [],
-      sourceIds: [],
-      metrics: [],
-      combiningTypes: [],
-    };
-
-    var me = this;
-    this.props.datasource.getNodeList().then(values => {
-      values.forEach(value => {
-        me.state.nodeIds.push({ value: value, label: String(value) });
-        if (this.props.query.nodeIds.includes(value)) {
-          me.state.selectedNodeIds.push(me.state.nodeIds[me.state.nodeIds.length - 1]);
-        }
-      });
-    });
 
     if (this.props.query.sourceIds) {
       this.props.query.sourceIds.forEach(sourceId => {
@@ -53,6 +43,21 @@ export class QueryEditor extends PureComponent<Props, State> {
     CombiningType.enumValues().forEach(value => {
       this.state.combiningTypes.push({ value: value.name, label: value.name });
     });
+  }
+
+  async componentDidMount() {
+    const { query, datasource } = this.props;
+    const state = this.state;
+
+    const nodeIds = await datasource.getNodeList();
+    let setNodeIds: Array<SelectableValue<number>> = [];
+    nodeIds.forEach(nodeId => {
+      state.nodeIds.push({ value: nodeId, label: String(nodeId) });
+      if (query.nodeIds.includes(nodeId)) {
+        setNodeIds.push(state.nodeIds[state.nodeIds.length - 1]);
+      }
+    });
+    this.setState({ selectedNodeIds: setNodeIds });
   }
 
   onNodeIdsChange = (v: Array<SelectableValue<number>>) => {
@@ -116,7 +121,7 @@ export class QueryEditor extends PureComponent<Props, State> {
     return (
       <div className="gf-form">
         <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
-        <MultiSelect value={this.props.query.nodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
+        <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
 
         <InlineFormLabel width={7}>Source Ids</InlineFormLabel>
         <MultiSelect
