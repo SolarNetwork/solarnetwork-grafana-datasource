@@ -43,7 +43,7 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     const settingsData = instanceSettings.jsonData || ({} as SolarNetworkDataSourceOptions);
     this.token = settingsData.token;
 
-    this.env = this.createEnvironment(settingsData.host, undefined);
+    this.env = this.createEnvironment(settingsData.host, settingsData.proxy);
     this.signingKey = this.getSigningKey();
     this.nodeList = this.populateNodeList();
   }
