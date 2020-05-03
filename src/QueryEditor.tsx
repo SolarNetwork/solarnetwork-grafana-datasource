@@ -39,6 +39,9 @@ export class QueryEditor extends PureComponent<Props, State> {
       });
     }
 
+    if (!this.props.query.combiningType) {
+      this.props.query.combiningType = 'none';
+    }
     this.state.combiningTypes.push({ value: 'none', label: 'None' });
     CombiningType.enumValues().forEach(value => {
       this.state.combiningTypes.push({ value: value.name, label: value.name });
@@ -62,8 +65,9 @@ export class QueryEditor extends PureComponent<Props, State> {
 
   onNodeIdsChange = (v: Array<SelectableValue<number>>) => {
     const { onChange, query } = this.props;
-    onChange({ ...query, nodeIds: v.map((v: any) => v.value) });
-    //this.setState({ selectedNode: option });
+    const nodeIds = v.map((v: any) => v.value);
+    onChange({ ...query, nodeIds: nodeIds });
+    this.setState({ selectedNodeIds: nodeIds });
     this.tryQuery(); // executes the query
   };
 
