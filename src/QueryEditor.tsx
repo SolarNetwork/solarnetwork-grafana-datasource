@@ -3,31 +3,41 @@ import { Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
-import { Aggregation, CombiningType } from 'solarnetwork-api-core';
+import { Aggregation, CombiningType, DatumReadingType } from 'solarnetwork-api-core';
 
 type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSourceOptions>;
 
 interface State {
+  queryTypes: Array<SelectableValue<string>>;
   nodeIds: Array<SelectableValue<number>>;
   selectedNodeIds: Array<SelectableValue<number>>;
   sourceIds: Array<SelectableValue<string>>;
   metrics: Array<SelectableValue<string>>;
   combiningTypes: Array<SelectableValue<string>>;
   aggregations: Array<SelectableValue<string>>;
+  datumReadingType: Array<SelectableValue<string>>;
 }
 
 export class QueryEditor extends PureComponent<Props, State> {
   state: State = {
+    queryTypes: [],
     nodeIds: [],
     selectedNodeIds: [],
     sourceIds: [],
     metrics: [],
     combiningTypes: [],
     aggregations: [],
+    datumReadingTypes: [],
   };
 
   constructor(props: Props) {
     super(props);
+
+    if (!this.props.query.queryType) {
+      this.props.query.queryType = 'listDatum';
+    }
+    this.state.queryTypes.push({ value: 'listDatum', label: 'List Datum' });
+    this.state.queryTypes.push({ value: 'datumReading', label: 'Datum Reading' });
 
     if (this.props.query.sourceIds) {
       this.props.query.sourceIds.forEach(sourceId => {
@@ -57,6 +67,13 @@ export class QueryEditor extends PureComponent<Props, State> {
     Aggregation.enumValues().forEach(value => {
       this.state.aggregations.push({ value: value.name, label: value.name });
     });
+
+    if (!this.props.query.datumReadingType) {
+      this.props.query.datumReadingType = 'Difference';
+    }
+    DatumReadingType.enumValues().forEach(value => {
+      this.state.datumReadingTypes.push({ value: value.name, label: value.name });
+    });
   }
 
   async componentDidMount() {
@@ -73,6 +90,14 @@ export class QueryEditor extends PureComponent<Props, State> {
     });
     this.setState({ selectedNodeIds: setNodeIds });
   }
+
+  onQueryTypeChange = (option: SelectableValue<string>) => {
+    const { onChange, query } = this.props;
+    if (option.value) {
+      onChange({ ...query, queryType: option.value });
+    }
+    this.tryQuery(); // executes the query
+  };
 
   onNodeIdsChange = (v: Array<SelectableValue<number>>) => {
     const { onChange, query } = this.props;
@@ -126,6 +151,14 @@ export class QueryEditor extends PureComponent<Props, State> {
     this.tryQuery(); // executes the query
   };
 
+  onDatumReadingTypeChange = (option: SelectableValue<string>) => {
+    const { onChange, query } = this.props;
+    if (option.value) {
+      onChange({ ...query, datumReadingType: option.value });
+    }
+    this.tryQuery(); // executes the query
+  };
+
   tryQuery = () => {
     const { query, onRunQuery } = this.props;
     if (!query.nodeIds || !query.nodeIds.length) {
@@ -143,6 +176,9 @@ export class QueryEditor extends PureComponent<Props, State> {
   render() {
     return (
       <div className="gf-form">
+        <InlineFormLabel width={7}>Query Type</InlineFormLabel>
+        <Select value={this.props.query.queryType} options={this.state.queryTypes} onChange={this.onQueryTypeChange} />
+
         <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
         <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
 
@@ -176,6 +212,13 @@ export class QueryEditor extends PureComponent<Props, State> {
           value={this.props.query.aggregation}
           options={this.state.aggregations}
           onChange={this.onAggregationChange}
+        />
+
+        <InlineFormLabel width={7}>Datum Reading Type</InlineFormLabel>
+        <Select
+          value={this.props.query.datumReadingType}
+          options={this.state.datumReadingTypes}
+          onChange={this.onDatumReadingTypeChange}
         />
       </div>
     );
