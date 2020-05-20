@@ -21,4 +21,5 @@ export interface SolarNetworkQuery extends DataQuery {
   sourceIds: string[];
   metrics: string[];
   combiningType: string;
+  aggregation: string;
 }

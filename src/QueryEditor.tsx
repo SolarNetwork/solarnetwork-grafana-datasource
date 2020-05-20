@@ -3,7 +3,7 @@ import { Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
-import { CombiningType } from 'solarnetwork-api-core';
+import { Aggregation, CombiningType } from 'solarnetwork-api-core';
 
 type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSourceOptions>;
 
@@ -13,6 +13,7 @@ interface State {
   sourceIds: Array<SelectableValue<string>>;
   metrics: Array<SelectableValue<string>>;
   combiningTypes: Array<SelectableValue<string>>;
+  aggregations: Array<SelectableValue<string>>;
 }
 
 export class QueryEditor extends PureComponent<Props, State> {
@@ -22,6 +23,7 @@ export class QueryEditor extends PureComponent<Props, State> {
     sourceIds: [],
     metrics: [],
     combiningTypes: [],
+    aggregations: [],
   };
 
   constructor(props: Props) {
@@ -45,6 +47,15 @@ export class QueryEditor extends PureComponent<Props, State> {
     this.state.combiningTypes.push({ value: 'none', label: 'None' });
     CombiningType.enumValues().forEach(value => {
       this.state.combiningTypes.push({ value: value.name, label: value.name });
+    });
+
+    if (!this.props.query.aggregation) {
+      this.props.query.aggregation = 'auto';
+    }
+    this.state.aggregations.push({ value: 'auto', label: 'Auto' });
+    this.state.aggregations.push({ value: 'none', label: 'None' });
+    Aggregation.enumValues().forEach(value => {
+      this.state.aggregations.push({ value: value.name, label: value.name });
     });
   }
 
@@ -107,6 +118,14 @@ export class QueryEditor extends PureComponent<Props, State> {
     this.tryQuery(); // executes the query
   };
 
+  onAggregationChange = (option: SelectableValue<string>) => {
+    const { onChange, query } = this.props;
+    if (option.value) {
+      onChange({ ...query, aggregation: option.value });
+    }
+    this.tryQuery(); // executes the query
+  };
+
   tryQuery = () => {
     const { query, onRunQuery } = this.props;
     if (!query.nodeIds || !query.nodeIds.length) {
@@ -150,6 +169,13 @@ export class QueryEditor extends PureComponent<Props, State> {
           value={this.props.query.combiningType}
           options={this.state.combiningTypes}
           onChange={this.onCombiningTypeChange}
+        />
+
+        <InlineFormLabel width={7}>Aggregation</InlineFormLabel>
+        <Select
+          value={this.props.query.aggregation}
+          options={this.state.aggregations}
+          onChange={this.onAggregationChange}
         />
       </div>
     );

@@ -237,17 +237,22 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
     const from = range!.from;
     const to = new Date(range!.to.valueOf() + minuteMilliseconds);
     const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
-    let aggregation: Aggregation = undefined;
-    if (dateDiff > 366) {
-      aggregation = Aggregations.Month;
-    } else if (dateDiff > 30) {
-      aggregation = Aggregations.Day;
-    } else if (dateDiff > 7) {
-      aggregation = Aggregations.Hour;
-    }
 
     var data = await Promise.all(
       options.targets.map(target => {
+        let aggregation: Aggregation = undefined;
+        if (!target.aggregation || target.aggregation === 'auto') {
+          if (dateDiff > 366) {
+            aggregation = Aggregations.Month;
+          } else if (dateDiff > 30) {
+            aggregation = Aggregations.Day;
+          } else if (dateDiff > 7) {
+            aggregation = Aggregations.Hour;
+          }
+        } else if (target.aggregation !== 'none') {
+          aggregation = Aggregation.valueOf(target.aggregation);
+        }
+
         if (target.combiningType === 'none') {
           return this.standardDatumQuery(from, to, aggregation, target);
         } else {
