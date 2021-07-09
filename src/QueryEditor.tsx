@@ -84,7 +84,7 @@ export class QueryEditor extends PureComponent<Props, State> {
     let setNodeIds: Array<SelectableValue<number>> = [];
     nodeIds.forEach(nodeId => {
       state.nodeIds.push({ value: nodeId, label: String(nodeId) });
-      if (query.nodeIds.includes(nodeId)) {
+      if (query.nodeIds && query.nodeIds.includes(nodeId)) {
         setNodeIds.push(state.nodeIds[state.nodeIds.length - 1]);
       }
     });

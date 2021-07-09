@@ -17,12 +17,11 @@ import { flatten } from 'lodash';
 import {
   DataQueryRequest,
   DataQueryResponse,
-  DataSourceApi,
   DataSourceInstanceSettings,
   MutableDataFrame,
   FieldType,
 } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
+import { DataSourceWithBackend, getBackendSrv } from '@grafana/runtime';
 
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions, SigningKeyInfo } from './types';
 
@@ -33,7 +32,7 @@ function sameUTCDate(d1: Date, d2: Date): boolean {
   return d1.toISOString().substr(0, 10) === d2.toISOString().substr(0, 10);
 }
 
-export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
+export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
   private token: string;
   private signingKey: Promise<SigningKeyInfo>;
   private nodeList: Promise<number[]>;
@@ -50,22 +49,12 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   private async getSigningKey(): Promise<SigningKeyInfo> {
-    const tsdbRequest = {
-      refId: 'sk',
-      queries: [{ datasourceId: this.id }],
-    };
-    return getBackendSrv()
-      .datasourceRequest({
-        url: 'api/tsdb/query',
-        method: 'POST',
-        data: tsdbRequest,
-      })
-      .then((result: any) => {
-        return {
-          key: CryptoJS.enc.Hex.parse(result.data.results.sk.meta.key),
-          date: new Date(result.data.results.sk.meta.date),
-        };
-      });
+    return this.getResource('sk').then((result: any) => {
+      return {
+        key: CryptoJS.enc.Hex.parse(result.key),
+        date: new Date(result.date),
+      };
+    });
   }
 
   private async populateNodeList(): Promise<number[]> {
@@ -211,7 +200,6 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
 
   private async fetchDatumReadingResult(filter, readingType, target): Promise<MutableDataFrame[]> {
     return this.datumReadingRequest(filter, readingType).then(data => {
-      console.log(data);
       let series: Map<string, any> = new Map<string, any>();
       data.data.data.results.forEach(datum => {
         const seriesName = target.nodeIds.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
@@ -261,6 +249,9 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   private async listDatumCombiningQuery(from, to, aggregation, combiningType, target): Promise<MutableDataFrame[]> {
+    if (!combiningType) {
+      return new MutableDataFrame();
+    }
     let combiName: string = combiningType.name;
     let filter: DatumFilter = new DatumFilter({
       nodeIds: target.nodeIds,
@@ -334,13 +325,19 @@ export class DataSource extends DataSourceApi<SolarNetworkQuery, SolarNetworkDat
   }
 
   async testDatasource() {
-    const urlHelper = new NodeDatumUrlHelper(this.env);
-    return this.doRequest(urlHelper.listAllNodeIdsUrl())
+    this.callHealthCheck()
       .then((res: any) => {
-        return { status: 'success', message: 'Success' };
+        const urlHelper = new NodeDatumUrlHelper(this.env);
+        return this.doRequest(urlHelper.listAllNodeIdsUrl())
+          .then((res: any) => {
+            return { status: 'success', message: 'Success' };
+          })
+          .catch((err: any) => {
+            return { status: 'error', message: err.statusText };
+          });
       })
       .catch((err: any) => {
-        return { status: 'error', message: err.statusText };
+        return { status: 'error', message: 'Backend failed' };
       });
   }
 }
