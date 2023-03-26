@@ -25,4 +25,6 @@ artifacts/
 work/
 ci/
 e2e-results/
+*.tgz
 
+.nvmrc
