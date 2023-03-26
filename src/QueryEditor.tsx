@@ -15,7 +15,7 @@ interface State {
   metrics: Array<SelectableValue<string>>;
   combiningTypes: Array<SelectableValue<string>>;
   aggregations: Array<SelectableValue<string>>;
-  datumReadingType: Array<SelectableValue<string>>;
+  datumReadingTypes: Array<SelectableValue<string>>;
 }
 
 export class QueryEditor extends PureComponent<Props, State> {
