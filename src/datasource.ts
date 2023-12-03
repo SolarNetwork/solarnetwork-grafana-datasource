@@ -4,6 +4,7 @@ import {
   HttpHeaders,
   HttpMethod,
   DatumFilter,
+  LocationDatumUrlHelper,
   NodeDatumUrlHelper,
   Aggregations,
   Aggregation,
@@ -125,7 +126,9 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
         me.signingKey = me.getSigningKey();
         return me.listDatumRequest(filter);
       }
-      var urlHelper = new NodeDatumUrlHelper(me.env);
+      var urlHelper = filter.locationIds 
+        ? new LocationDatumUrlHelper(me.env)
+        :  new NodeDatumUrlHelper(me.env);
       var authBuilder = me.authV2Builder();
       authBuilder.key(signingKey.key, signingKey.date);
       let loader = new DatumLoader(urlHelper, filter, authBuilder);
@@ -237,11 +240,15 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
 
   private async listDatumQuery(from, to, aggregation, target): Promise<MutableDataFrame[]> {
     let filter: DatumFilter = new DatumFilter({
-      nodeIds: target.nodeIds,
       sourceIds: target.sourceIds,
       startDate: from,
       endDate: to,
     });
+    if (target.queryType === 'listDatum') {
+      filter.nodeIds = target.nodeIds;
+    } else {
+      filter.locationIds = target.locationIds;
+    }
     if (aggregation) {
       filter.aggregation = aggregation;
     }

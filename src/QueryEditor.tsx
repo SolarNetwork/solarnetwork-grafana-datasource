@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react';
-import { Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
+import { Input, Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
@@ -10,6 +10,7 @@ type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSou
 interface State {
   queryTypes: Array<SelectableValue<string>>;
   nodeIds: Array<SelectableValue<number>>;
+  locationIds: number[];
   selectedNodeIds: Array<SelectableValue<number>>;
   sourceIds: Array<SelectableValue<string>>;
   metrics: Array<SelectableValue<string>>;
@@ -22,6 +23,7 @@ export class QueryEditor extends PureComponent<Props, State> {
   state: State = {
     queryTypes: [],
     nodeIds: [],
+    locationIds: [],
     selectedNodeIds: [],
     sourceIds: [],
     metrics: [],
@@ -37,6 +39,7 @@ export class QueryEditor extends PureComponent<Props, State> {
       this.props.query.queryType = 'listDatum';
     }
     this.state.queryTypes.push({ value: 'listDatum', label: 'List Datum' });
+    this.state.queryTypes.push({ value: 'listLocDatum', label: 'List Location Datum' });
     this.state.queryTypes.push({ value: 'datumReading', label: 'Datum Reading' });
 
     if (this.props.query.sourceIds) {
@@ -105,6 +108,13 @@ export class QueryEditor extends PureComponent<Props, State> {
     onChange({ ...query, nodeIds: nodeIds });
     this.setState({ selectedNodeIds: nodeIds });
     this.tryQuery(); // executes the query
+  };
+
+  onLocationIdsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { onChange, query } = this.props;
+    const locIds = event.target.value.split(',').map((n: string) => Number(n));
+    onChange({ ...query, locationIds: locIds });
+    this.setState({ locationIds: locIds });
   };
 
   onSourceIdsChange = (v: Array<SelectableValue<string>>) => {
@@ -181,6 +191,14 @@ export class QueryEditor extends PureComponent<Props, State> {
 
         <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
         <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
+
+        <InlineFormLabel width={7}>Location Ids</InlineFormLabel>
+        <Input
+          width={7}
+          label={'Location IDs'}
+          value={this.state.locationIds.join(',')}
+          onChange={this.onLocationIdsChange}
+        />
 
         <InlineFormLabel width={7}>Source Ids</InlineFormLabel>
         <MultiSelect

@@ -19,6 +19,7 @@ export interface SigningKeyInfo {
 export interface SolarNetworkQuery extends DataQuery {
   queryType: string;
   nodeIds: number[];
+  locationIds: number[];
   sourceIds: string[];
   metrics: string[];
   combiningType: string;

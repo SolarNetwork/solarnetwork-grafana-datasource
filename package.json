@@ -1,6 +1,6 @@
 {
   "name": "revolve-energy-solarnetwork-datasource",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "SolarNetwork integration & data source",
   "scripts": {
     "build": "grafana-toolkit plugin:build && mage",
