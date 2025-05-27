@@ -115,7 +115,7 @@ export class QueryEditor extends PureComponent<Props, State> {
 
   onSourceIdsCreateOption = (v: string) => {
     const { onChange, query } = this.props;
-    var sourceIds = query.sourceIds || [];
+    const  sourceIds = query.sourceIds || [];
     onChange({ ...query, sourceIds: sourceIds.concat(v) });
     this.setState({ sourceIds: this.state.sourceIds.concat({ value: v, label: v }) });
     this.tryQuery(); // executes the query
@@ -129,7 +129,7 @@ export class QueryEditor extends PureComponent<Props, State> {
 
   onMetricsCreateOption = (v: string) => {
     const { onChange, query } = this.props;
-    var metrics = query.metrics || [];
+    const metrics = query.metrics || [];
     onChange({ ...query, metrics: metrics.concat(v) });
     this.setState({ metrics: this.state.metrics.concat({ value: v, label: v }) });
     this.tryQuery(); // executes the query
