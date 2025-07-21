@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react';
-import { Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
+import { FieldSet, Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
@@ -175,52 +175,55 @@ export class QueryEditor extends PureComponent<Props, State> {
 
   render() {
     return (
-      <div className="gf-form">
-        <InlineFormLabel width={7}>Query Type</InlineFormLabel>
-        <Select value={this.props.query.queryType} options={this.state.queryTypes} onChange={this.onQueryTypeChange} />
+      <>
+        <FieldSet label="Streams">
+          <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
+          <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
 
-        <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
-        <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
+          <InlineFormLabel width={7}>Source Ids</InlineFormLabel>
+          <MultiSelect
+            allowCustomValue
+            value={this.props.query.sourceIds}
+            options={this.state.sourceIds}
+            onChange={this.onSourceIdsChange}
+            onCreateOption={this.onSourceIdsCreateOption}
+          />
 
-        <InlineFormLabel width={7}>Source Ids</InlineFormLabel>
-        <MultiSelect
-          allowCustomValue
-          value={this.props.query.sourceIds}
-          options={this.state.sourceIds}
-          onChange={this.onSourceIdsChange}
-          onCreateOption={this.onSourceIdsCreateOption}
-        />
+          <InlineFormLabel width={7}>Metrics</InlineFormLabel>
+          <MultiSelect
+            allowCustomValue
+            value={this.props.query.metrics}
+            options={this.state.metrics}
+            onChange={this.onMetricsChange}
+            onCreateOption={this.onMetricsCreateOption}
+          />
+        </FieldSet>
+        <FieldSet label="Style">
+          <InlineFormLabel width={7}>Query Type</InlineFormLabel>
+          <Select value={this.props.query.queryType} options={this.state.queryTypes} onChange={this.onQueryTypeChange} />
 
-        <InlineFormLabel width={7}>Metrics</InlineFormLabel>
-        <MultiSelect
-          allowCustomValue
-          value={this.props.query.metrics}
-          options={this.state.metrics}
-          onChange={this.onMetricsChange}
-          onCreateOption={this.onMetricsCreateOption}
-        />
+          <InlineFormLabel width={7}>Combining Type</InlineFormLabel>
+          <Select
+            value={this.props.query.combiningType}
+            options={this.state.combiningTypes}
+            onChange={this.onCombiningTypeChange}
+          />
 
-        <InlineFormLabel width={7}>Combining Type</InlineFormLabel>
-        <Select
-          value={this.props.query.combiningType}
-          options={this.state.combiningTypes}
-          onChange={this.onCombiningTypeChange}
-        />
+          <InlineFormLabel width={7}>Aggregation</InlineFormLabel>
+          <Select
+            value={this.props.query.aggregation}
+            options={this.state.aggregations}
+            onChange={this.onAggregationChange}
+          />
 
-        <InlineFormLabel width={7}>Aggregation</InlineFormLabel>
-        <Select
-          value={this.props.query.aggregation}
-          options={this.state.aggregations}
-          onChange={this.onAggregationChange}
-        />
-
-        <InlineFormLabel width={7}>Datum Reading Type</InlineFormLabel>
-        <Select
-          value={this.props.query.datumReadingType}
-          options={this.state.datumReadingTypes}
-          onChange={this.onDatumReadingTypeChange}
-        />
-      </div>
+          <InlineFormLabel width={7}>Datum Reading Type</InlineFormLabel>
+          <Select
+            value={this.props.query.datumReadingType}
+            options={this.state.datumReadingTypes}
+            onChange={this.onDatumReadingTypeChange}
+          />
+        </FieldSet>
+      </>
     );
   }
 }
