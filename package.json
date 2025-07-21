@@ -21,7 +21,7 @@
     "@grafana/runtime": "^7.0.0",
     "@grafana/toolkit": "^7.0.0",
     "@grafana/ui": "^7.0.0",
-    "@types/lodash": "^7.0.0",
+    "@types/lodash": "^4.14.151",
     "solarnetwork-api-core": "^0.23.0",
     "solarnetwork-datum-loader": "^0.10.4"
   },
