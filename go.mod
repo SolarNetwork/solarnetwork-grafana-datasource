@@ -1,4 +1,4 @@
-module revolve-energy-solarnetwork-datasource-backend
+module solarnetwork-datasource-backend
 
 go 1.16
 
