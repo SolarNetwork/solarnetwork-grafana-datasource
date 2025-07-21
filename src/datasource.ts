@@ -94,16 +94,16 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   }
 
   private authV2Builder(url?: string): AuthorizationV2Builder {
-    var authBuilder = new AuthorizationV2Builder(this.token, this.env);
+    const authBuilder = new AuthorizationV2Builder(this.token, this.env);
     if (url) {
-      let a = document.createElement('a');
+      const a = document.createElement('a');
       a.href = url;
       if (a.pathname) {
         authBuilder.path(a.pathname);
       }
       if (a.search) {
-        var urlParams = new URLSearchParams(a.search);
-        var params = {};
+        const urlParams = new URLSearchParams(a.search);
+        const params = {};
         for (let entry of urlParams.entries()) {
           const [key, value] = entry;
           params[key] = value;
@@ -118,37 +118,37 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   }
 
   private async listDatumRequest(filter: DatumFilter): Promise<any> {
-    var me = this;
+    const me = this;
     return await this.signingKey.then(signingKey => {
       if (!sameUTCDate(signingKey.date, new Date())) {
         // Update signing key and re-call
         me.signingKey = me.getSigningKey();
         return me.listDatumRequest(filter);
       }
-      var urlHelper = new NodeDatumUrlHelper(me.env);
-      var authBuilder = me.authV2Builder();
+      const urlHelper = new NodeDatumUrlHelper(me.env);
+      const authBuilder = me.authV2Builder();
       authBuilder.key(signingKey.key, signingKey.date);
-      let loader = new DatumLoader(urlHelper, filter, authBuilder);
+      const loader = new DatumLoader(urlHelper, filter, authBuilder);
       return loader.fetch();
     });
   }
 
   private async datumReadingRequest(filter: DatumFilter, readingType: DatumReadingType): Promise<any> {
-    var urlHelper = new NodeDatumUrlHelper(this.env);
-    var url = urlHelper.datumReadingUrl(filter, readingType);
+    const urlHelper = new NodeDatumUrlHelper(this.env);
+    const url = urlHelper.datumReadingUrl(filter, readingType);
     return this.doRequest(url);
   }
 
   private async doRequest(url): Promise<any> {
-    var authBuilder = this.authV2Builder(url);
-    var me = this;
+    const authBuilder = this.authV2Builder(url);
+    const me = this;
     return await this.signingKey.then(signingKey => {
       if (!sameUTCDate(signingKey.date, new Date())) {
         // Update signing key and re-call
         me.signingKey = me.getSigningKey();
         return me.doRequest(url);
       }
-      var options = {
+      const options = {
         url: url,
         headers: {
           Accept: 'application/json',
@@ -163,7 +163,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
 
   private async fetchListDatumResult(filter, target): Promise<MutableDataFrame[]> {
     return this.listDatumRequest(filter).then(results => {
-      let series: Map<string, any> = new Map<string, any>();
+      const series: Map<string, any> = new Map<string, any>();
       results.forEach(datum => {
         const seriesName = target.nodeIds.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
         if (!series.has(seriesName)) {
@@ -181,7 +181,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
           });
           series.set(seriesName, frame);
         }
-        var s = series.get(seriesName);
+        const s = series.get(seriesName);
         if (s) {
           s.fields.forEach(field => {
             if (field.name === 'Time') {
@@ -200,7 +200,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
 
   private async fetchDatumReadingResult(filter, readingType, target): Promise<MutableDataFrame[]> {
     return this.datumReadingRequest(filter, readingType).then(data => {
-      let series: Map<string, any> = new Map<string, any>();
+      const series: Map<string, any> = new Map<string, any>();
       data.data.data.results.forEach(datum => {
         const seriesName = target.nodeIds.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
         if (!series.has(seriesName)) {
@@ -218,7 +218,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
           });
           series.set(seriesName, frame);
         }
-        var s = series.get(seriesName);
+        const s = series.get(seriesName);
         if (s) {
           s.fields.forEach(field => {
             if (field.name === 'Time') {
@@ -252,8 +252,8 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     if (!combiningType) {
       return new MutableDataFrame();
     }
-    let combiName: string = combiningType.name;
-    let filter: DatumFilter = new DatumFilter({
+    const combiName: string = combiningType.name;
+    const filter: DatumFilter = new DatumFilter({
       nodeIds: target.nodeIds,
       sourceIds: target.sourceIds,
       combiningType: combiningType,
@@ -275,7 +275,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   }
 
   private async datumReadingQuery(from, to, aggregation, target): Promise<MutableDataFrame[]> {
-    let filter: DatumFilter = new DatumFilter({
+    const filter: DatumFilter = new DatumFilter({
       nodeIds: target.nodeIds,
       sourceIds: target.sourceIds,
       startDate: from,
@@ -284,7 +284,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     if (aggregation) {
       filter.aggregation = aggregation;
     }
-    let readingType = DatumReadingType.valueOf(target.datumReadingType);
+    const readingType = DatumReadingType.valueOf(target.datumReadingType);
     return this.fetchDatumReadingResult(filter, readingType, target);
   }
 
@@ -294,7 +294,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     const to = new Date(range!.to.valueOf() + minuteMilliseconds);
     const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
 
-    var data = await Promise.all(
+    const data = await Promise.all(
       options.targets.map(target => {
         let aggregation: Aggregation = undefined;
         if (!target.aggregation || target.aggregation === 'auto') {
