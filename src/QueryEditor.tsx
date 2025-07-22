@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react';
-import { FieldSet, Select, MultiSelect, InlineFormLabel } from '@grafana/ui';
+import { FieldSet, Select, MultiSelect, InlineFormLabel, InlineFieldRow, InlineField } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
@@ -177,26 +177,29 @@ export class QueryEditor extends PureComponent<Props, State> {
     return (
       <>
         <FieldSet label="Streams">
-          <InlineFormLabel width={7}>Node Ids</InlineFormLabel>
-          <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
-
-          <InlineFormLabel width={7}>Source Ids</InlineFormLabel>
-          <MultiSelect
-            allowCustomValue
-            value={this.props.query.sourceIds}
-            options={this.state.sourceIds}
-            onChange={this.onSourceIdsChange}
-            onCreateOption={this.onSourceIdsCreateOption}
-          />
-
-          <InlineFormLabel width={7}>Metrics</InlineFormLabel>
-          <MultiSelect
-            allowCustomValue
-            value={this.props.query.metrics}
-            options={this.state.metrics}
-            onChange={this.onMetricsChange}
-            onCreateOption={this.onMetricsCreateOption}
-          />
+          <InlineFieldRow>
+            <InlineField label="Node IDs">
+              <MultiSelect value={this.state.selectedNodeIds} options={this.state.nodeIds} onChange={this.onNodeIdsChange} />
+            </InlineField>
+            <InlineField label="Source IDs">
+              <MultiSelect
+                allowCustomValue
+                value={this.props.query.sourceIds}
+                options={this.state.sourceIds}
+                onChange={this.onSourceIdsChange}
+                onCreateOption={this.onSourceIdsCreateOption}
+              />
+            </InlineField>
+            <InlineField label="Metrics">
+              <MultiSelect
+                allowCustomValue
+                value={this.props.query.metrics}
+                options={this.state.metrics}
+                onChange={this.onMetricsChange}
+                onCreateOption={this.onMetricsCreateOption}
+              />
+            </InlineField>
+          </InlineFieldRow>
         </FieldSet>
         <FieldSet label="Style">
           <InlineFormLabel width={7}>Query Type</InlineFormLabel>
