@@ -1,10 +1,10 @@
 {
   "type": "datasource",
   "name": "SolarNetwork",
-  "id": "revolve-energy-solarnetwork-datasource",
+  "id": "solarnetwork-datasource",
   "metrics": true,
   "backend": true,
-  "executable": "revolve-energy-solarnetwork-backend",
+  "executable": "solarnetwork-backend",
   "info": {
     "description": "SolarNetwork integration & data source",
     "author": {

@@ -1,7 +1,7 @@
 services:
   grafana:
     user: root
-    container_name: 'revolve-energy-solarnetwork-datasource'
+    container_name: 'solarnetwork-datasource'
 
     build:
       context: .
@@ -19,13 +19,13 @@ services:
     cap_add:
       - SYS_PTRACE
     volumes:
-      - ../dist:/var/lib/grafana/plugins/revolve-energy-solarnetwork-datasource
+      - ../dist:/var/lib/grafana/plugins/solarnetwork-datasource
       - ../provisioning:/etc/grafana/provisioning
-      - ..:/root/revolve-energy-solarnetwork-datasource
+      - ..:/root/solarnetwork-datasource
 
     environment:
       NODE_ENV: development
-      GF_LOG_FILTERS: plugin.revolve-energy-solarnetwork-datasource:debug
+      GF_LOG_FILTERS: plugin.solarnetwork-datasource:debug
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: revolve-energy-solarnetwork-datasource
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: solarnetwork-datasource
