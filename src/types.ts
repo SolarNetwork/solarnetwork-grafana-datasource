@@ -1,4 +1,5 @@
-import { DataQuery, DataSourceJsonData } from '@grafana/data';
+import { DataSourceJsonData } from '@grafana/data';
+import { DataQuery } from '@grafana/schema';
 import { WordArray } from 'crypto-js';
 
 export interface SolarNetworkDataSourceOptions extends DataSourceJsonData {
