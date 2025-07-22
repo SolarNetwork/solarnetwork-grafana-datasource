@@ -6,8 +6,15 @@ component in order to provide a signing key to the frontend without
 revealing the secret.
 
 ## Build Requirements
-As well as the normal npm dependencies, you will need Go 1.16+ and mage
+As well as the normal npm dependencies, you will need Go 1.22+ and mage
 installed and available on the path. These are for the backend component.
+
+On macOS, you can install Go 1.22 via homebrew:
+
+```
+brew install go@1.22
+export PATH="/opt/homebrew/opt/go@1.22/bin:$PATH"
+```
 
 ## Building
 
