@@ -3,7 +3,7 @@ import { FieldSet, Select, MultiSelect, InlineFormLabel, InlineFieldRow, InlineF
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from './datasource';
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions } from './types';
-import { Aggregation, CombiningType, DatumReadingType } from 'solarnetwork-api-core';
+import { Aggregation, CombiningType, DatumReadingType } from 'solarnetwork-api-core/lib/domain';
 
 type Props = QueryEditorProps<DataSource, SolarNetworkQuery, SolarNetworkDataSourceOptions>;
 

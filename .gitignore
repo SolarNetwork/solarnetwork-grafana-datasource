@@ -28,3 +28,4 @@ e2e-results/
 *.tgz
 
 .nvmrc
+.vscode

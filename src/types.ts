@@ -1,6 +1,5 @@
 import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
-import { WordArray } from 'crypto-js';
 
 export interface SolarNetworkDataSourceOptions extends DataSourceJsonData {
   token: string;
@@ -13,7 +12,7 @@ export interface SolarNetworkDataSourceSecureOptions {
 }
 
 export interface SigningKeyInfo {
-  key: WordArray;
+  key: CryptoJS.lib.WordArray;
   date: Date;
 }
 

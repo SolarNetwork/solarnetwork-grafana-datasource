@@ -1,17 +1,24 @@
+import Base64 from 'crypto-js/enc-base64.js';
+import Hex from 'crypto-js/enc-hex.js';
+import SHA256 from 'crypto-js/sha256.js';
+
+import {
+  Aggregation,
+  Aggregations,
+  CombiningType,
+  DatumFilter,
+  DatumReadingType,
+} from 'solarnetwork-api-core/lib/domain';
 import {
   AuthorizationV2Builder,
   Environment,
+  HostConfig,
   HttpHeaders,
   HttpMethod,
-  DatumFilter,
-  NodeDatumUrlHelper,
-  Aggregations,
-  Aggregation,
-  CombiningType,
-  DatumReadingType,
-} from 'solarnetwork-api-core';
-import { DatumLoader } from 'solarnetwork-datum-loader';
-import * as CryptoJS from 'crypto-js';
+  SolarQueryApi,
+} from 'solarnetwork-api-core/lib/net';
+import { DatumLoader } from 'solarnetwork-api-core/lib/tool';
+
 import { flatten } from 'lodash';
 
 import {
@@ -21,7 +28,7 @@ import {
   MutableDataFrame,
   FieldType,
 } from '@grafana/data';
-import { DataSourceWithBackend, getBackendSrv } from '@grafana/runtime';
+import { BackendSrvRequest, DataSourceWithBackend, getBackendSrv } from '@grafana/runtime';
 
 import { SolarNetworkQuery, SolarNetworkDataSourceOptions, SigningKeyInfo } from './types';
 
@@ -29,21 +36,21 @@ const minuteMilliseconds = 60 * 1000;
 const dayMilliseconds = 24 * 60 * minuteMilliseconds;
 
 function sameUTCDate(d1: Date, d2: Date): boolean {
-  return d1.toISOString().substr(0, 10) === d2.toISOString().substr(0, 10);
+  return d1.toISOString().substring(0, 10) === d2.toISOString().substring(0, 10);
 }
 
 export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
   private token: string;
   private signingKey: Promise<SigningKeyInfo>;
   private nodeList: Promise<number[]>;
-  private env: Environment;
+  private api: SolarQueryApi;
 
   constructor(instanceSettings: DataSourceInstanceSettings<SolarNetworkDataSourceOptions>) {
     super(instanceSettings);
     const settingsData = instanceSettings.jsonData || ({} as SolarNetworkDataSourceOptions);
     this.token = settingsData.token;
 
-    this.env = this.createEnvironment(settingsData.host, settingsData.proxy);
+    this.api = this.createQueryApi(settingsData.host, settingsData.proxy);
     this.signingKey = this.getSigningKey();
     this.nodeList = this.populateNodeList();
   }
@@ -58,10 +65,9 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   }
 
   private async populateNodeList(): Promise<number[]> {
-    const urlHelper = new NodeDatumUrlHelper(this.env);
-    return this.doRequest(urlHelper.listAllNodeIdsUrl()).then((result: any) => {
+    return this.doRequest(this.api.listAllNodeIdsUrl()).then((result: any) => {
       let nodeList: number[] = [];
-      result.data.data.forEach(node => {
+      result.data.data.forEach((node: number) => {
         nodeList.push(node);
       });
       return nodeList;
@@ -72,99 +78,80 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     return await this.nodeList;
   }
 
-  private createEnvironment(host, proxy) {
-    let h = document.createElement('a');
-    h.href = host;
-    let proxyHost: string | undefined;
-    let proxyPort: string | undefined;
-    if (proxy) {
-      let p = document.createElement('a');
-      p.href = proxy;
-      proxyHost = p.hostname;
-      proxyPort = p.port;
+  private createQueryApi(host: string | undefined, proxy: string | undefined): SolarQueryApi {
+    const config: Partial<HostConfig> = {};
+
+    if (host) {
+      const a = document.createElement('a');
+      a.href = host;
+      config.host = a.hostname;
+      config.protocol = a.protocol.substring(0, a.protocol.length - 1);
+      config.hostname = a.hostname;
+      if (a.port) {
+        config.port = Number(a.port);
+      }
     }
-    return new Environment({
-      host: h.hostname,
-      protocol: h.protocol.substring(0, h.protocol.length - 1),
-      hostname: h.hostname,
-      port: h.port,
-      proxyHost: proxyHost,
-      proxyPort: proxyPort,
-    });
+    if (proxy) {
+      config.proxyUrlPrefix = proxy;
+    }
+
+    return new SolarQueryApi(new Environment(config));
   }
 
   private authV2Builder(url?: string): AuthorizationV2Builder {
-    const authBuilder = new AuthorizationV2Builder(this.token, this.env);
+    const authBuilder = new AuthorizationV2Builder(this.token, this.api.environment);
     if (url) {
-      const a = document.createElement('a');
-      a.href = url;
-      if (a.pathname) {
-        authBuilder.path(a.pathname);
-      }
-      if (a.search) {
-        const urlParams = new URLSearchParams(a.search);
-        const params = {};
-        for (let entry of urlParams.entries()) {
-          const [key, value] = entry;
-          params[key] = value;
-        }
-        authBuilder.queryParams(params);
-      }
+      authBuilder.url(url, true);
     }
-    return authBuilder
-      .method(HttpMethod.GET)
-      .snDate(true)
-      .date(new Date());
+    return authBuilder.method(HttpMethod.GET).snDate(true);
   }
 
   private async listDatumRequest(filter: DatumFilter): Promise<any> {
     const me = this;
-    return await this.signingKey.then(signingKey => {
+    return await this.signingKey.then((signingKey) => {
       if (!sameUTCDate(signingKey.date, new Date())) {
         // Update signing key and re-call
         me.signingKey = me.getSigningKey();
         return me.listDatumRequest(filter);
       }
-      const urlHelper = new NodeDatumUrlHelper(me.env);
       const authBuilder = me.authV2Builder();
       authBuilder.key(signingKey.key, signingKey.date);
-      const loader = new DatumLoader(urlHelper, filter, authBuilder);
+      const loader = new DatumLoader(this.api, filter, authBuilder);
       return loader.fetch();
     });
   }
 
   private async datumReadingRequest(filter: DatumFilter, readingType: DatumReadingType): Promise<any> {
-    const urlHelper = new NodeDatumUrlHelper(this.env);
-    const url = urlHelper.datumReadingUrl(filter, readingType);
+    const url = this.api.datumReadingUrl(readingType, filter);
     return this.doRequest(url);
   }
 
-  private async doRequest(url): Promise<any> {
+  private async doRequest(url: string): Promise<any> {
     const authBuilder = this.authV2Builder(url);
     const me = this;
-    return await this.signingKey.then(signingKey => {
+    return await this.signingKey.then((signingKey) => {
       if (!sameUTCDate(signingKey.date, new Date())) {
         // Update signing key and re-call
         me.signingKey = me.getSigningKey();
         return me.doRequest(url);
       }
-      const options = {
+      const options: BackendSrvRequest = {
         url: url,
         headers: {
           Accept: 'application/json',
         },
         method: HttpMethod.GET,
       };
-      options.headers[HttpHeaders.X_SN_DATE] = authBuilder.requestDateHeaderValue;
-      options.headers[HttpHeaders.AUTHORIZATION] = authBuilder.buildWithKey(signingKey.key);
+      options.headers![HttpHeaders.X_SN_DATE] = authBuilder.requestDateHeaderValue;
+      options.headers![HttpHeaders.AUTHORIZATION] = authBuilder.buildWithKey(signingKey.key);
       return getBackendSrv().datasourceRequest(options);
     });
   }
 
-  private async fetchListDatumResult(filter, target): Promise<MutableDataFrame[]> {
-    return this.listDatumRequest(filter).then(results => {
+  private async fetchListDatumResult(filter: DatumFilter, target): Promise<MutableDataFrame[]> {
+    return this.listDatumRequest(filter).then((results) => {
       const series: Map<string, any> = new Map<string, any>();
-      results.forEach(datum => {
+      results.forEach((datum) => {
         const seriesName = target.nodeIds.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
         if (!series.has(seriesName)) {
           let frame = {
@@ -172,7 +159,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
             name: datum.sourceId,
             fields: [{ name: 'Time', values: [], type: FieldType.time }],
           };
-          target.metrics.forEach(metric => {
+          target.metrics.forEach((metric) => {
             frame.fields.push({
               name: metric,
               values: [],
@@ -183,7 +170,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
         }
         const s = series.get(seriesName);
         if (s) {
-          s.fields.forEach(field => {
+          s.fields.forEach((field) => {
             if (field.name === 'Time') {
               field.values.push(Date.parse(datum.created));
             } else {
@@ -199,9 +186,9 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   }
 
   private async fetchDatumReadingResult(filter, readingType, target): Promise<MutableDataFrame[]> {
-    return this.datumReadingRequest(filter, readingType).then(data => {
+    return this.datumReadingRequest(filter, readingType).then((data) => {
       const series: Map<string, any> = new Map<string, any>();
-      data.data.data.results.forEach(datum => {
+      data.data.data.results.forEach((datum) => {
         const seriesName = target.nodeIds.length > 1 ? datum.nodeId + ' ' + datum.sourceId : datum.sourceId;
         if (!series.has(seriesName)) {
           let frame = {
@@ -209,7 +196,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
             name: datum.sourceId,
             fields: [{ name: 'Time', values: [], type: FieldType.time }],
           };
-          target.metrics.forEach(metric => {
+          target.metrics.forEach((metric) => {
             frame.fields.push({
               name: metric,
               values: [],
@@ -220,7 +207,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
         }
         const s = series.get(seriesName);
         if (s) {
-          s.fields.forEach(field => {
+          s.fields.forEach((field) => {
             if (field.name === 'Time') {
               field.values.push(Date.parse(datum.endDate));
             } else {
@@ -248,9 +235,15 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     return this.fetchListDatumResult(filter, target);
   }
 
-  private async listDatumCombiningQuery(from, to, aggregation, combiningType, target): Promise<MutableDataFrame[]> {
+  private async listDatumCombiningQuery(
+    from: Date,
+    to: Date,
+    aggregation: Aggregation | undefined,
+    combiningType: CombiningType | undefined,
+    target: SolarNetworkQuery
+  ): Promise<MutableDataFrame[]> {
     if (!combiningType) {
-      return new MutableDataFrame();
+      return [];
     }
     const combiName: string = combiningType.name;
     const filter: DatumFilter = new DatumFilter({
@@ -274,13 +267,19 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     return this.fetchListDatumResult(filter, target);
   }
 
-  private async datumReadingQuery(from, to, aggregation, target): Promise<MutableDataFrame[]> {
-    const filter: DatumFilter = new DatumFilter({
-      nodeIds: target.nodeIds,
-      sourceIds: target.sourceIds,
-      startDate: from,
-      endDate: to,
-    });
+  private async datumReadingQuery(
+    from: Date | undefined,
+    to: Date,
+    aggregation: Aggregation | undefined,
+    target: SolarNetworkQuery
+  ): Promise<MutableDataFrame[]> {
+    const filter: DatumFilter = new DatumFilter();
+    filter.nodeIds = target.nodeIds;
+    filter.sourceIds = target.sourceIds;
+    if (from) {
+      filter.startDate = from;
+    }
+    filter.endDate = to;
     if (aggregation) {
       filter.aggregation = aggregation;
     }
@@ -290,13 +289,13 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
 
   async query(options: DataQueryRequest<SolarNetworkQuery>): Promise<DataQueryResponse> {
     const { range } = options;
-    const from = range!.from;
+    const from = range!.from.toDate();
     const to = new Date(range!.to.valueOf() + minuteMilliseconds);
     const dateDiff = (to.valueOf() - from.valueOf()) / dayMilliseconds;
 
     const data = await Promise.all(
-      options.targets.map(target => {
-        let aggregation: Aggregation = undefined;
+      options.targets.map((target) => {
+        let aggregation: Aggregation | undefined = undefined;
         if (!target.aggregation || target.aggregation === 'auto') {
           if (dateDiff > 366) {
             aggregation = Aggregations.Month;
@@ -315,20 +314,19 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
           if (target.combiningType === 'none') {
             return this.listDatumQuery(from, to, aggregation, target);
           } else {
-            let combiningType: CombiningType = CombiningType.valueOf(target.combiningType);
+            let combiningType: CombiningType | undefined = CombiningType.valueOf(target.combiningType);
             return this.listDatumCombiningQuery(from, to, aggregation, combiningType, target);
           }
         }
       })
     ).then(flatten);
-    return { data };
+    return { data } as DataQueryResponse;
   }
 
   async testDatasource() {
     this.callHealthCheck()
       .then((res: any) => {
-        const urlHelper = new NodeDatumUrlHelper(this.env);
-        return this.doRequest(urlHelper.listAllNodeIdsUrl())
+        return this.doRequest(this.api.listAllNodeIdsUrl())
           .then((res: any) => {
             return { status: 'success', message: 'Success' };
           })
