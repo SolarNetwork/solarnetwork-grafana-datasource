@@ -1,6 +1,6 @@
 {
   "name": "solarnetwork-datasource",
-  "version": "3.0.0.dev01",
+  "version": "3.0.0",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",

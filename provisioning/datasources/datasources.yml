@@ -9,6 +9,6 @@ datasources:
     version: 1
     editable: true
     jsonData:
-      path: '/resources'
+      token: $SN_API_TOKEN
     secureJsonData:
-      apiKey: 'api-key'
+      secret: $SN_API_SECRET
