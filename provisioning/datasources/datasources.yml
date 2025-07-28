@@ -9,4 +9,6 @@ datasources:
     version: 1
     editable: true
     jsonData:
+      token: $SN_API_TOKEN
     secureJsonData:
+      secret: $SN_API_SECRET
