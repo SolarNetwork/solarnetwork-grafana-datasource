@@ -1,37 +1,47 @@
 {
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "SolarNetwork",
-  "id": "revolve-energy-solarnetwork-datasource",
+  "id": "solarnetwork-solarnetwork-datasource",
   "metrics": true,
   "backend": true,
-  "executable": "revolve-energy-solarnetwork-backend",
+  "executable": "gpx_solarnetwork_datasource",
   "info": {
-    "description": "SolarNetwork integration & data source",
+    "description": "Visualize datum streams in SolarNetwork.",
     "author": {
-      "name": "Revolve Energy Limited",
-      "url": "https://www.revolveenergy.co/"
+      "name": "SolarNetwork Foundation",
+      "url": "https://solarnetwork.net"
     },
-    "keywords": [],
+    "keywords": ["datasource"],
     "logos": {
       "small": "img/logo.svg",
-      "large": "img/logo.svg"
+      "large": "img/logo-large.svg"
     },
     "links": [
       {
         "name": "Website",
-        "url": "https://github.com/shaybrazier/solarnetwork-grafana-datasource/"
+        "url": "https://github.com/SolarNetwork/solarnetwork-grafana-datasource/"
       },
       {
         "name": "License",
-        "url": "https://github.com/shaybrazier/solarnetwork-grafana-datasource/blob/master/LICENSE"
+        "url": "https://github.com/SolarNetwork/solarnetwork-grafana-datasource/blob/master/LICENSE"
       }
     ],
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Data source configuration",
+        "path": "img/sn-grafana-datasource-config@2x.png"
+      },
+      {
+        "name": "Query configuration",
+        "path": "img/sn-grafana-datasource-query@2x.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
   "dependencies": {
-    "grafanaVersion": "8.0.x",
+    "grafanaDependency": ">=10.4.0",
     "plugins": []
   }
 }
