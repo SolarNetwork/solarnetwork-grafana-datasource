@@ -47,3 +47,5 @@ ci/
 
 .eslintcache
 .nvmrc
+
+/solarnetwork-solarnetwork-datasource*
