@@ -5,6 +5,7 @@
   "id": "solarnetwork-solarnetwork-datasource",
   "metrics": true,
   "backend": true,
+  "alerting": true,
   "executable": "gpx_solarnetwork_datasource",
   "info": {
     "description": "Visualize datum streams in SolarNetwork.",
