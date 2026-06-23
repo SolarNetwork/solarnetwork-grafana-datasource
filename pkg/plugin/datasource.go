@@ -2,9 +2,6 @@ package plugin
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -14,18 +11,15 @@ import (
 	"github.com/solarnetwork/solarnetwork-datasource/pkg/models"
 )
 
-const SecretPrefix = "SNWS2"
-const DateFormat = "20060102"
-const HashData = "snws2_request"
 const RefId = "sk"
 
 var (
 	_ backend.CallResourceHandler   = (*Datasource)(nil)
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
+	_ backend.QueryDataHandler      = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-// NewDatasource creates a new datasource instance.
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{}, nil
 }
@@ -33,26 +27,21 @@ func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (ins
 type Datasource struct{}
 
 type SigningKeyInfo struct {
-	Key   string    `json:"key"`
-	Date  time.Time `json:"date"`
+	Key  string    `json:"key"`
+	Date time.Time `json:"date"`
 }
 
-func (d *Datasource) Dispose() {
-	// Clean up datasource instance resources.
-}
+func (d *Datasource) Dispose() {}
 
 func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
-	log.DefaultLogger.Info("CallResource called", "request", req)
+	// Do not log the full request: it carries DecryptedSecureJSONData (the API secret).
+	log.DefaultLogger.Info("CallResource called", "method", req.Method, "path", req.Path)
 
 	t := time.Now().UTC()
 	secret := req.PluginContext.DataSourceInstanceSettings.DecryptedSecureJSONData["secret"]
-	h := hmac.New(sha256.New, []byte(SecretPrefix + secret))
-	h.Write([]byte(t.Format(DateFormat)))
-	h2 := hmac.New(sha256.New, h.Sum(nil))
-	h2.Write([]byte(HashData))
-	key := hex.EncodeToString(h2.Sum(nil))
-	info := &SigningKeyInfo {
-		Key: key,
+	key := GenerateSigningKeyHex(secret, t, "snws2_request")
+	info := &SigningKeyInfo{
+		Key:  key,
 		Date: t,
 	}
 
@@ -62,8 +51,6 @@ func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResource
 // CheckHealth handles health checks sent from Grafana to the plugin.
 func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	res := &backend.CheckHealthResult{}
-
-	// verify token secret available
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 
 	if err != nil {
