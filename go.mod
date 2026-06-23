@@ -4,7 +4,10 @@ go 1.24.1
 
 toolchain go1.24.4
 
-require github.com/grafana/grafana-plugin-sdk-go v0.278.0
+require (
+	github.com/fxamacker/cbor/v2 v2.9.0
+	github.com/grafana/grafana-plugin-sdk-go v0.278.0
+)
 
 require (
 	github.com/BurntSushi/toml v1.4.0 // indirect
@@ -17,7 +20,6 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/elazarl/goproxy v1.7.2 // indirect
 	github.com/fatih/color v1.15.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -27,14 +27,15 @@ func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (ins
 type Datasource struct{}
 
 type SigningKeyInfo struct {
-	Key   string    `json:"key"`
-	Date  time.Time `json:"date"`
+	Key  string    `json:"key"`
+	Date time.Time `json:"date"`
 }
 
 func (d *Datasource) Dispose() {}
 
 func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
-	log.DefaultLogger.Info("CallResource called", "request", req)
+	// Do not log the full request: it carries DecryptedSecureJSONData (the API secret).
+	log.DefaultLogger.Info("CallResource called", "method", req.Method, "path", req.Path)
 
 	t := time.Now().UTC()
 	secret := req.PluginContext.DataSourceInstanceSettings.DecryptedSecureJSONData["secret"]
