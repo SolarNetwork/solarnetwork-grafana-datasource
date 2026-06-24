@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"net/url"
 	"strconv"
 	"strings"
@@ -265,26 +266,52 @@ func filterRequestedMetrics(requested []string, lookup map[string]fieldInfo) []s
 }
 
 // parseTimestamp extracts the timestamp from a row, handling both datum and aggregate formats.
-// Returns the timestamp in milliseconds and whether this is an aggregate row.
-func parseTimestamp(row []interface{}) (ts int64, isAggregate bool, ok bool) {
+// For aggregate rows the SolarNetwork convention is that the datum timestamp is the START of the
+// period (the first array element); the END timestamp (second element) is returned separately via
+// endTs/hasEnd so callers can surface it as an additional field. Returns the start timestamp in
+// milliseconds, the end timestamp, whether an end timestamp was present, whether the row is an
+// aggregate row, and whether the start timestamp parsed successfully.
+func parseTimestamp(row []interface{}) (ts, endTs int64, hasEnd, isAggregate, ok bool) {
 	if len(row) < 2 {
-		return 0, false, false
+		return 0, 0, false, false, false
 	}
 
 	if tsArray, isArr := row[1].([]interface{}); isArr && len(tsArray) >= 1 {
-		// Aggregate format: [startTs, endTs] - use endTs if available, else startTs
-		isAggregate = true
-		if len(tsArray) >= 2 && tsArray[1] != nil {
-			ts, _ = toInt64(tsArray[1])
-		} else {
-			ts, _ = toInt64(tsArray[0])
+		// Aggregate format: [startTs, endTs] - the start is the datum timestamp.
+		start, err := toInt64(tsArray[0])
+		if err != nil {
+			return 0, 0, false, true, false
 		}
-		return ts, true, true
+		if len(tsArray) >= 2 && tsArray[1] != nil {
+			if e, err := toInt64(tsArray[1]); err == nil {
+				endTs, hasEnd = e, true
+			}
+		}
+		return start, endTs, hasEnd, true, true
 	}
 
 	// Datum format: single timestamp
 	ts, err := toInt64(row[1])
-	return ts, false, err == nil
+	return ts, 0, false, false, err == nil
+}
+
+// extractFieldString extracts a status (string) field value from a row at the given index.
+// Aggregate status cells are wrapped in a single-element array; the first element is used.
+func extractFieldString(row []interface{}, rowIdx int) string {
+	if rowIdx < 0 || rowIdx >= len(row) || row[rowIdx] == nil {
+		return ""
+	}
+	v := row[rowIdx]
+	if arr, ok := v.([]interface{}); ok {
+		if len(arr) == 0 || arr[0] == nil {
+			return ""
+		}
+		v = arr[0]
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // extractFieldValue extracts a field value from a row at the given index.
@@ -336,32 +363,58 @@ func buildFrame(meta *DatumStreamMetadata, rows [][]interface{}, query Query) (*
 	frame.RefID = query.RefID
 
 	times := make([]time.Time, 0, len(rows))
-	valueArrays := make(map[string][]float64)
+	endTimes := make([]*time.Time, 0, len(rows))
+	anyEnd := false
+
+	floatArrays := make(map[string][]float64)
+	stringArrays := make(map[string][]string)
 	for _, field := range wantedFields {
-		valueArrays[field] = make([]float64, 0, len(rows))
+		if fieldLookup[field].propType == "s" {
+			stringArrays[field] = make([]string, 0, len(rows))
+		} else {
+			floatArrays[field] = make([]float64, 0, len(rows))
+		}
 	}
 
 	iLen := len(meta.Instantaneous)
 	aLen := len(meta.Accumulating)
 
 	for _, row := range rows {
-		ts, isAggregate, ok := parseTimestamp(row)
+		ts, endTs, hasEnd, isAggregate, ok := parseTimestamp(row)
 		if !ok {
 			continue
 		}
 		times = append(times, time.UnixMilli(ts))
+		if hasEnd {
+			end := time.UnixMilli(endTs)
+			endTimes = append(endTimes, &end)
+			anyEnd = true
+		} else {
+			endTimes = append(endTimes, nil)
+		}
 
 		for _, fieldName := range wantedFields {
 			info := fieldLookup[fieldName]
 			rowIdx := calculateRowIndex(info, iLen, aLen)
-			val := extractFieldValue(row, rowIdx, isAggregate)
-			valueArrays[fieldName] = append(valueArrays[fieldName], val)
+			if info.propType == "s" {
+				stringArrays[fieldName] = append(stringArrays[fieldName], extractFieldString(row, rowIdx))
+			} else {
+				floatArrays[fieldName] = append(floatArrays[fieldName], extractFieldValue(row, rowIdx, isAggregate))
+			}
 		}
 	}
 
 	frame.Fields = append(frame.Fields, data.NewField("Time", nil, times))
 	for _, field := range wantedFields {
-		frame.Fields = append(frame.Fields, data.NewField(field, nil, valueArrays[field]))
+		if fieldLookup[field].propType == "s" {
+			frame.Fields = append(frame.Fields, data.NewField(field, nil, stringArrays[field]))
+		} else {
+			frame.Fields = append(frame.Fields, data.NewField(field, nil, floatArrays[field]))
+		}
+	}
+	// Aggregate rows carry the period-end timestamp; expose it as a nullable extra field.
+	if anyEnd {
+		frame.Fields = append(frame.Fields, data.NewField("endTimestamp", nil, endTimes))
 	}
 
 	return frame, nil
@@ -384,6 +437,10 @@ func toInt64(v interface{}) (int64, error) {
 		return int64(n), nil
 	case json.Number:
 		return n.Int64()
+	case big.Int:
+		return n.Int64(), nil
+	case *big.Int:
+		return n.Int64(), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int64", v)
 	}
@@ -401,9 +458,26 @@ func toFloat64(v interface{}) (float64, error) {
 		return n, nil
 	case json.Number:
 		return n.Float64()
+	case big.Int:
+		f, _ := new(big.Float).SetInt(&n).Float64()
+		return f, nil
+	case *big.Int:
+		f, _ := new(big.Float).SetInt(n).Float64()
+		return f, nil
 	case cbor.Tag:
-		// CBOR decimal fraction (tag 4): mantissa * 10^exponent
-		if n.Number == 4 {
+		// SolarNetwork can send numbers as CBOR tags (RFC 7049 section 2.4).
+		switch n.Number {
+		case 2, 3: // (negative) bignum, in case it arrives as a raw tag rather than big.Int
+			if b, ok := n.Content.([]byte); ok {
+				bi := new(big.Int).SetBytes(b)
+				if n.Number == 3 {
+					// Negative bignum encodes -1 - n.
+					bi.Sub(big.NewInt(-1), bi)
+				}
+				f, _ := new(big.Float).SetInt(bi).Float64()
+				return f, nil
+			}
+		case 4: // decimal fraction: mantissa * 10^exponent
 			if content, ok := n.Content.([]interface{}); ok && len(content) == 2 {
 				exp, _ := toInt64(content[0])
 				mantissa, _ := toInt64(content[1])
