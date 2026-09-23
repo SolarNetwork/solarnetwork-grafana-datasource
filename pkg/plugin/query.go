@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -27,6 +29,7 @@ const (
 // Query comes from the client
 type Query struct {
 	RefID            string    `json:"refId"`
+	UseStreaming     bool      `json:"useStreaming"`
 	QueryType        QueryType `json:"queryType"`
 	NodeIDs          []int64   `json:"nodeIds"`
 	SourceIDs        []string  `json:"sourceIds"`
@@ -40,7 +43,7 @@ type Query struct {
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	response := backend.NewQueryDataResponse()
 	settings := req.PluginContext.DataSourceInstanceSettings
-	token, host, proxy, err := extractSettings(settings)
+	token, host, proxy, _, err := extractSettings(settings)
 	if err != nil {
 		return nil, fmt.Errorf("extract settings: %w", err)
 	}
@@ -60,10 +63,10 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-func extractSettings(settings *backend.DataSourceInstanceSettings) (token, host, proxy string, err error) {
+func extractSettings(settings *backend.DataSourceInstanceSettings) (token, host, proxy string, mqtt string, err error) {
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal(settings.JSONData, &jsonData); err != nil {
-		return "", "", "", fmt.Errorf("parse JSON data: %w", err)
+		return "", "", "", "", fmt.Errorf("parse JSON data: %w", err)
 	}
 
 	if t, ok := jsonData["token"].(string); ok {
@@ -74,6 +77,9 @@ func extractSettings(settings *backend.DataSourceInstanceSettings) (token, host,
 	}
 	if p, ok := jsonData["proxy"].(string); ok {
 		proxy = p
+	}
+	if m, ok := jsonData["mqtt"].(string); ok {
+		mqtt = m
 	}
 
 	// Extract just the hostname if a full URL was provided
@@ -88,7 +94,7 @@ func extractSettings(settings *backend.DataSourceInstanceSettings) (token, host,
 		}
 	}
 
-	return token, host, proxy, nil
+	return token, host, proxy, mqtt, nil
 }
 
 func (d *Datasource) processQuery(ctx context.Context, client *Client, backendQuery backend.DataQuery) backend.DataResponse {
@@ -488,4 +494,80 @@ func toFloat64(v interface{}) (float64, error) {
 	default:
 		return 0, fmt.Errorf("cannot convert %T to float64", v)
 	}
+}
+
+// DatumStreamMetadata describes a datum stream's metadata
+type DatumStreamMetadata struct {
+	StreamID       string            `json:"streamId"`
+	ObjectID       int64             `json:"objectId"`
+	SourceID       string            `json:"sourceId"`
+	Zone           string            `json:"zone"`
+	Kind           string            `json:"kind"`
+	Location       map[string]string `json:"location,omitempty"`
+	Instantaneous  []string          `json:"i,omitempty"`
+	Accumulating   []string          `json:"a,omitempty"`
+	Status         []string          `json:"s,omitempty"`
+	OtherFieldData any               `json:"-"` // could be more in the future (from the API, that is)
+}
+
+// StreamResponse wraps datum stream responses. The Data field is left as is
+// such that it can be decoded differently based on whether it's aggregated
+type StreamResponse struct {
+	Success bool                  `json:"success"`
+	Meta    []DatumStreamMetadata `json:"meta"`
+	Data    []any                 `json:"data"`
+	Message string                `json:"message,omitempty"`
+}
+
+// StreamDatum requests /datum/stream/datum
+func (c *Client) StreamDatum(ctx context.Context, params url.Values) (*StreamResponse, error) {
+	return c.streamRequest(ctx, "/solarquery/api/v1/sec/datum/stream/datum", params)
+}
+
+// StreamReading requests /datum/stream/reading
+func (c *Client) StreamReading(ctx context.Context, params url.Values) (*StreamResponse, error) {
+	return c.streamRequest(ctx, "/solarquery/api/v1/sec/datum/stream/reading", params)
+}
+
+func (c *Client) streamRequest(ctx context.Context, path string, params url.Values) (*StreamResponse, error) {
+	resp, err := c.Request(ctx, GET, path, params, nil, "application/cbor", true)
+	if err != nil {
+		return extractErrorResponse(resp, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read stream response: %w", err)
+	}
+
+	var parsed StreamResponse
+	if err := cbor.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decode stream response: %w", err)
+	}
+
+	return &parsed, nil
+}
+
+// extractErrorResponse attempts to extract a more detailed error message from
+// the response body when a request fails so that it can be displayed in Grafana directly
+func extractErrorResponse(resp *http.Response, originalErr error) (*StreamResponse, error) {
+	if resp == nil || resp.Body == nil {
+		return nil, originalErr
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || len(body) == 0 {
+		return nil, originalErr
+	}
+
+	// Try to decode as CBOR first to get structured error message
+	var parsed StreamResponse
+	if cbor.Unmarshal(body, &parsed) == nil && parsed.Message != "" {
+		return &parsed, fmt.Errorf("%w (message: %s)", originalErr, parsed.Message)
+	}
+
+	// Fall back to plain text body
+	return nil, fmt.Errorf("%w (body: %s)", originalErr, string(body))
 }

@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -99,21 +101,21 @@ func GenerateCanonicalRequestMessage(method, path, parameters string, signedHead
 	b.WriteString(strings.ToUpper(method))
 	b.WriteByte('\n')
 	b.WriteString(path)
+
 	b.WriteByte('\n')
 	b.WriteString(OrderQueryParameters(parameters))
-	b.WriteByte('\n')
 
-	keys := sortedLowerKeys(signedHeaders)
+	keys := slices.Sorted(maps.Keys(signedHeaders))
 	for _, k := range keys {
+		b.WriteByte('\n')
 		b.WriteString(k)
 		b.WriteByte(':')
 		b.WriteString(strings.TrimSpace(signedHeaders[k]))
-		b.WriteByte('\n')
 	}
-
-	b.WriteString(strings.Join(keys, ";"))
 	b.WriteByte('\n')
+	b.WriteString(strings.Join(keys, ";"))
 
+	b.WriteByte('\n')
 	digest := sha256.Sum256([]byte(body))
 	b.WriteString(hex.EncodeToString(digest[:]))
 
@@ -128,20 +130,31 @@ func GenerateSignature(message []byte, key []byte) string {
 
 // GenerateAuthHeader builds the full Authorization header value for a request.
 func GenerateAuthHeader(token, secret, method, path, params string, signedHeaders map[string]string, body string, t time.Time) string {
+	signedHeaders = lowerKeys(signedHeaders)
 	canonical := GenerateCanonicalRequestMessage(method, path, params, signedHeaders, body)
 	key := GenerateSigningKey(secret, t, "snws2_request")
 	msg := GenerateSigningMessage(t, canonical)
 	sig := GenerateSignature([]byte(msg), key)
 
-	headerNames := strings.Join(sortedLowerKeys(signedHeaders), ";")
+	headerNames := strings.Join(slices.Sorted(maps.Keys(signedHeaders)), ";")
 	return fmt.Sprintf("SNWS2 Credential=%s,SignedHeaders=%s,Signature=%s", token, headerNames, sig)
 }
 
-func sortedLowerKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, strings.ToLower(strings.TrimSpace(k)))
+func GenerateFluxSignature(token, secret, method, path string, signedHeaders map[string]string, t time.Time) string {
+	signedHeaders = lowerKeys(signedHeaders)
+	canonical := GenerateCanonicalRequestMessage(method, path, "", signedHeaders, "")
+	key := GenerateSigningKey(secret, t, "snws2_request")
+	msg := GenerateSigningMessage(t, canonical)
+	sig := GenerateSignature([]byte(msg), key)
+
+	headerNames := strings.Join(slices.Sorted(maps.Keys(signedHeaders)), ";")
+	return fmt.Sprintf("SNWS2 Credential=%s,SignedHeaders=%s,Signature=%s,Date=%d", token, headerNames, sig, t.Unix())
+}
+
+func lowerKeys(m map[string]string) map[string]string {
+	lowered := make(map[string]string)
+	for k, v := range m {
+		lowered[strings.ToLower(k)] = v
 	}
-	sort.Strings(keys)
-	return keys
+	return lowered
 }

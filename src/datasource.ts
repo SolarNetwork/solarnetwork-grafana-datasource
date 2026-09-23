@@ -1,9 +1,17 @@
 import {
   CoreApp,
+  DataQueryRequest,
+  DataQueryResponse,
   DataSourceInstanceSettings,
+  LiveChannelScope,
   TestDataSourceResponse,
 } from '@grafana/data';
-import { BackendSrvRequest, DataSourceWithBackend, getBackendSrv } from '@grafana/runtime';
+import {
+  BackendSrvRequest,
+  DataSourceWithBackend,
+  getBackendSrv,
+  getGrafanaLiveSrv,
+} from '@grafana/runtime';
 
 import {
   DEFAULT_PROXY_URL,
@@ -23,6 +31,8 @@ import {
   HttpMethod,
   SolarQueryApi,
 } from 'solarnetwork-api-core/lib/net';
+
+import { merge, Observable } from 'rxjs';
 
 function sameUTCDate(d1: Date, d2: Date): boolean {
   return d1.toISOString().substring(0, 10) === d2.toISOString().substring(0, 10);
@@ -69,6 +79,39 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   filterQuery(query: SolarNetworkQuery): boolean {
     // if no query has been provided, prevent the query from being executed
     return !!query.nodeIds?.length || !!query.sourceIds?.length || !!query.metrics?.length;
+  }
+
+  query(request: DataQueryRequest<SolarNetworkQuery>): Observable<DataQueryResponse> {
+    const normalQueries = request.targets.filter(q => !q.useStreaming);
+    const streamingQueries = request.targets.filter(q => q.useStreaming);
+
+    const observables: Observable<DataQueryResponse>[] = [];
+
+    if (normalQueries.length > 0) {
+      observables.push(
+        super.query({
+          ...request,
+          targets: normalQueries,
+        })
+      );
+    }
+
+    for (const query of streamingQueries) {
+      // path has symbol and length constraints, so make a hash for it
+      const pathHash = CryptoJS.SHA1(`${query.queryType}-${query.sourceIds.join(",")}-${query.nodeIds.join(",")}-${query.metrics.join(",")}-${query.combiningType}-${query.aggregation}-${query.datumReadingType}`);
+      observables.push(
+        getGrafanaLiveSrv().getDataStream({
+          addr: {
+            scope: LiveChannelScope.DataSource,
+            namespace: this.uid, // this gets renamed to stream in future versions
+            path: `sn/${query.refId}-${pathHash}`,
+            data: query,
+          },
+        })
+      );
+    }
+
+    return merge(...observables);
   }
 
   private async getSigningKey(): Promise<SigningKeyInfo> {

@@ -6,6 +6,7 @@
   "metrics": true,
   "backend": true,
   "alerting": true,
+  "streaming": true,
   "executable": "gpx_solarnetwork_datasource",
   "info": {
     "description": "Visualize datum streams in SolarNetwork.",

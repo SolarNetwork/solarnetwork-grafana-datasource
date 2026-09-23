@@ -17,6 +17,7 @@ var (
 	_ backend.CallResourceHandler   = (*Datasource)(nil)
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
 	_ backend.QueryDataHandler      = (*Datasource)(nil)
+	_ backend.StreamHandler         = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 

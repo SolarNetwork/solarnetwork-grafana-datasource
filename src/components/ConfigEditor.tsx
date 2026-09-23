@@ -7,6 +7,7 @@ import {
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import {
   DEFAULT_HOST,
+  DEFAULT_MQTT,
   DEFAULT_PROXY_URL,
   SolarNetworkDataSourceOptions,
   SolarNetworkSecureJsonData
@@ -71,6 +72,16 @@ export function ConfigEditor(props: Props) {
     });
   };
 
+  const onMqttChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...jsonData,
+        mqtt: event.target.value,
+      },
+    });
+  };
+
   return (
     <>
       <InlineField label="Token" labelWidth={14} interactive tooltip={'SolarNetwork API token'}>
@@ -111,6 +122,15 @@ export function ConfigEditor(props: Props) {
           width={40}
           onChange={onProxyUrlChange}
           createCustomValue
+        />
+      </InlineField>
+      <InlineField label="MQTT" labelWidth={14} interactive tooltip={'SolarFlux URL'}>
+        <Input
+          id="config-editor-mqtt"
+          onChange={onMqttChange}
+          value={jsonData.mqtt || DEFAULT_MQTT}
+          placeholder="SolarFlux URL"
+          width={40}
         />
       </InlineField>
     </>

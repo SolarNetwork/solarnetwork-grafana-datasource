@@ -2,86 +2,191 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
+	"regexp"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-// DatumStreamMetadata describes a datum stream's metadata
-type DatumStreamMetadata struct {
-	StreamID       string            `json:"streamId"`
-	ObjectID       int64             `json:"objectId"`
-	SourceID       string            `json:"sourceId"`
-	Zone           string            `json:"zone"`
-	Kind           string            `json:"kind"`
-	Location       map[string]string `json:"location,omitempty"`
-	Instantaneous  []string          `json:"i,omitempty"`
-	Accumulating   []string          `json:"a,omitempty"`
-	Status         []string          `json:"s,omitempty"`
-	OtherFieldData any               `json:"-"` // could be more in the future (from the API, that is)
+type Message struct {
+	Created    time.Time
+	SourceId   string
+	Properties map[string]any
 }
 
-// StreamResponse wraps datum stream responses. The Data field is left as is
-// such that it can be decoded differently based on whether it's aggregated
-type StreamResponse struct {
-	Success bool                  `json:"success"`
-	Meta    []DatumStreamMetadata `json:"meta"`
-	Data    []any                 `json:"data"`
-	Message string                `json:"message,omitempty"`
-}
-
-// StreamDatum requests /datum/stream/datum
-func (c *Client) StreamDatum(ctx context.Context, params url.Values) (*StreamResponse, error) {
-	return c.streamRequest(ctx, "/solarquery/api/v1/sec/datum/stream/datum", params)
-}
-
-// StreamReading requests /datum/stream/reading
-func (c *Client) StreamReading(ctx context.Context, params url.Values) (*StreamResponse, error) {
-	return c.streamRequest(ctx, "/solarquery/api/v1/sec/datum/stream/reading", params)
-}
-
-func (c *Client) streamRequest(ctx context.Context, path string, params url.Values) (*StreamResponse, error) {
-	resp, err := c.Request(ctx, GET, path, params, nil, "application/cbor", true)
+func (d *Datasource) SubscribeStream(_ context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
+	settings := req.PluginContext.DataSourceInstanceSettings
+	token, _, _, broker, err := extractSettings(settings)
 	if err != nil {
-		return extractErrorResponse(resp, err)
+		return nil, fmt.Errorf("extract settings: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read stream response: %w", err)
+	if token == "" {
+		return nil, fmt.Errorf("API token not configured")
 	}
-
-	var parsed StreamResponse
-	if err := cbor.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("decode stream response: %w", err)
+	if broker == "" {
+		return nil, fmt.Errorf("MQTT broker not configured")
 	}
 
-	return &parsed, nil
+	secret := settings.DecryptedSecureJSONData["secret"]
+	if secret == "" {
+		return nil, fmt.Errorf("API secret not configured")
+	}
+
+	return &backend.SubscribeStreamResponse{
+		Status: backend.SubscribeStreamStatusOK,
+	}, nil
 }
 
-// extractErrorResponse attempts to extract a more detailed error message from
-// the response body when a request fails so that it can be displayed in Grafana directly
-func extractErrorResponse(resp *http.Response, originalErr error) (*StreamResponse, error) {
-	if resp == nil || resp.Body == nil {
-		return nil, originalErr
-	}
-	defer resp.Body.Close()
+// Stream publishing is not supported
+func (d *Datasource) PublishStream(context.Context, *backend.PublishStreamRequest) (*backend.PublishStreamResponse, error) {
+	return &backend.PublishStreamResponse{
+		Status: backend.PublishStreamStatusPermissionDenied,
+	}, nil
+}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil || len(body) == 0 {
-		return nil, originalErr
-	}
-
-	// Try to decode as CBOR first to get structured error message
-	var parsed StreamResponse
-	if cbor.Unmarshal(body, &parsed) == nil && parsed.Message != "" {
-		return &parsed, fmt.Errorf("%w (message: %s)", originalErr, parsed.Message)
+func (d *Datasource) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
+	q := Query{}
+	json.Unmarshal(req.Data, &q)
+	settings := req.PluginContext.DataSourceInstanceSettings
+	token, _, _, broker, err := extractSettings(settings)
+	if err != nil {
+		return fmt.Errorf("extract settings: %w", err)
 	}
 
-	// Fall back to plain text body
-	return nil, fmt.Errorf("%w (body: %s)", originalErr, string(body))
+	secret := settings.DecryptedSecureJSONData["secret"]
+	if secret == "" {
+		return fmt.Errorf("API secret not configured")
+	}
+
+	now := time.Now()
+	signedHeaders := map[string]string{
+		"Host": "data.solarnetwork.net",
+		"X-SN-Date": GetXSnDate(now),
+	}
+	signature := GenerateFluxSignature(token, secret, "GET", "/solarflux/auth", signedHeaders, now)
+
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(broker)
+	opts.SetClientID(token + "_grafana")
+	opts.SetUsername(token)
+	opts.SetPassword(signature)
+
+	msgHandler := func(
+		client mqtt.Client,
+		msg mqtt.Message,
+	) {
+		nodeId, sourceId, parsed := parseTopic(msg.Topic())
+		if !parsed {
+			log.DefaultLogger.Error("Failed to parse topic", "error", err)
+			return
+		}
+
+		var message Message
+		if err := cbor.Unmarshal(msg.Payload(), &message); err != nil {
+			log.DefaultLogger.Error("Failed to decode CBOR", "error", err)
+			return
+		}
+
+		frameName := fmt.Sprintf("%s %s", nodeId, sourceId)
+		frame := data.NewFrame(frameName)
+		frame.Fields = append(frame.Fields, data.NewField("time", nil, []time.Time{time.Time(message.Created)}))
+		for _, metric := range q.Metrics {
+			val, err := toFloat64(message.Properties[metric])
+			if err != nil {
+				log.DefaultLogger.Error("Failed to get float for metric")
+			}
+			frame.Fields = append(frame.Fields, data.NewField(metric, nil, []float64{val}))
+		}
+
+		if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+			log.DefaultLogger.Error("Failed send frame", "error", err)
+		}
+	}
+	opts.SetDefaultPublishHandler(msgHandler);
+
+	client := mqtt.NewClient(opts)
+
+	conn := client.Connect()
+	if conn.Wait() && conn.Error() != nil {
+		return conn.Error()
+	}
+
+	defer client.Disconnect(1000)
+
+	var subscriptions []string
+	for _, nodeId := range q.NodeIDs {
+		for _, sourceId := range q.SourceIDs {
+			topic := fmt.Sprintf("node/%d/datum/0/%s", nodeId, sourceId)
+			conn = client.Subscribe(topic, 0, nil)
+
+			if conn.Wait() && conn.Error() != nil {
+				return conn.Error()
+			}
+
+			log.DefaultLogger.Info("Subscribed to SolarFlux stream", "topic", topic)
+			subscriptions = append(subscriptions, topic)
+		}
+	}
+
+	<-ctx.Done()
+
+	for _, topic := range subscriptions {
+		client.Unsubscribe(topic)
+		log.DefaultLogger.Info("Unsubscribed from SolarFlux stream", "topic", topic)
+	}
+
+	return nil
+}
+
+// expected format is: user/+/node/{nodeId}/datum/0/{sourceId}
+var topicRegexp = regexp.MustCompile(`^user/[^/]+/node/([^/]+)/datum/0/(.+)$`)
+
+func parseTopic(topic string) (nodeId, sourceId string, parsed bool) {
+	matches := topicRegexp.FindStringSubmatch(topic)
+	if matches == nil {
+		return "", "", false
+	}
+
+	return matches[1], matches[2], true
+}
+
+func (m *Message) UnmarshalCBOR(data []byte) error {
+	var raw map[string]cbor.RawMessage
+
+	if err := cbor.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	m.Properties = make(map[string]any)
+
+	for k, v := range raw {
+		switch k {
+		case "created":
+			var ms int64
+			if err := cbor.Unmarshal(v, &ms); err != nil {
+				return err
+			}
+			m.Created = time.UnixMilli(ms)
+
+		case "sourceId":
+			if err := cbor.Unmarshal(v, &m.SourceId); err != nil {
+				return err
+			}
+
+		default:
+			var value any
+			if err := cbor.Unmarshal(v, &value); err != nil {
+				return err
+			}
+			m.Properties[k] = value
+		}
+	}
+
+	return nil
 }
