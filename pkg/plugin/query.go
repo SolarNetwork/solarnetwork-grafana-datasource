@@ -39,6 +39,10 @@ type Query struct {
 	DatumReadingType string    `json:"datumReadingType,omitempty"`
 }
 
+func (q *Query) isCombining() bool {
+	return q.CombiningType != "" && !strings.EqualFold(q.CombiningType, "none")
+}
+
 // QueryData handles queries sent from Grafana
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	response := backend.NewQueryDataResponse()
@@ -98,61 +102,73 @@ func extractSettings(settings *backend.DataSourceInstanceSettings) (token, host,
 }
 
 func (d *Datasource) processQuery(ctx context.Context, client *Client, backendQuery backend.DataQuery) backend.DataResponse {
-	response, _, _, _ := d.processQueryDebug(ctx, client, backendQuery)
-	return response
-}
-
-// ProcessQueryDebug is like processQuery but also returns the raw stream response for debugging
-func (d *Datasource) ProcessQueryDebug(ctx context.Context, client *Client, backendQuery backend.DataQuery) (backend.DataResponse, *StreamResponse, Query, url.Values) {
-	return d.processQueryDebug(ctx, client, backendQuery)
-}
-
-func (d *Datasource) processQueryDebug(ctx context.Context, client *Client, backendQuery backend.DataQuery) (backend.DataResponse, *StreamResponse, Query, url.Values) {
 	var response backend.DataResponse
 	var query Query
 
 	if err := json.Unmarshal(backendQuery.JSON, &query); err != nil {
 		response.Error = fmt.Errorf("unmarshal query: %w", err)
-		return response, nil, query, nil
+		return response
 	}
 	query.RefID = backendQuery.RefID
 
 	params := buildQueryParams(query, backendQuery.TimeRange)
 
-	var streamResp *StreamResponse
-	var err error
+	var frames data.Frames
 
-	if query.QueryType == QueryTypeReading {
-		streamResp, err = client.StreamReading(ctx, params)
+	if query.isCombining() {
+		params.Set("max", "1000");
+		offset := 0;
+		params.Set("offset", fmt.Sprintf("%d", offset));
+		for {
+			pagedResp, err := client.DatumList(ctx, params)
+			if err != nil {
+				response.Error = fmt.Errorf("query request: %w", err)
+				return response
+			}
+
+			appendPageResponseToFrames(pagedResp, query, &frames)
+
+			if pagedResp.Data.ReturnedResultCount < 1000 {
+				break
+			}
+			offset += 1000
+			params.Set("offset", fmt.Sprintf("%d", offset));
+		}
 	} else {
-		streamResp, err = client.StreamDatum(ctx, params)
-	}
+		var streamResp *StreamResponse
+		var err error
 
-	if err != nil {
-		response.Error = fmt.Errorf("query request: %w", err)
-		return response, streamResp, query, params
-	}
+		if query.QueryType == QueryTypeReading {
+			streamResp, err = client.StreamReading(ctx, params)
+		} else {
+			streamResp, err = client.StreamDatum(ctx, params)
+		}
 
-	if !streamResp.Success {
-		response.Error = fmt.Errorf("query failed: %s", streamResp.Message)
-		return response, streamResp, query, params
-	}
+		if err != nil {
+			response.Error = fmt.Errorf("query request: %w", err)
+			return response
+		}
 
-	frames, err := streamResponseToFrames(streamResp, query)
-	if err != nil {
-		response.Error = fmt.Errorf("convert response: %w", err)
-		return response, streamResp, query, params
+		if !streamResp.Success {
+			response.Error = fmt.Errorf("query failed: %s", streamResp.Message)
+			return response
+		}
+
+		frames, err = streamResponseToFrames(streamResp, query)
+		if err != nil {
+			response.Error = fmt.Errorf("convert response: %w", err)
+			return response
+		}
 	}
 
 	response.Frames = frames
-	return response, streamResp, query, params
+	return response
 }
 
 func buildQueryParams(query Query, timeRange backend.TimeRange) url.Values {
 	params := url.Values{}
 
-	isCombining := query.CombiningType != "" &&
-		!strings.EqualFold(query.CombiningType, "none")
+	isCombining := query.isCombining()
 
 	if len(query.NodeIDs) > 0 {
 		nodeStrs := make([]string, len(query.NodeIDs))
@@ -237,6 +253,48 @@ func streamResponseToFrames(resp *StreamResponse, query Query) (data.Frames, err
 	}
 
 	return frames, nil
+}
+
+func getFrame(frames data.Frames, name string) *data.Frame {
+	for _, frame := range frames {
+		if frame.Name == name {
+			return frame
+		}
+	}
+	return nil
+}
+
+func getField(frame *data.Frame, name string) *data.Field {
+	for _, field := range frame.Fields {
+		if field.Name == name {
+			return field
+		}
+	}
+	return nil
+}
+
+func appendPageResponseToFrames(resp *PageResponse, query Query, frames *data.Frames) {
+	for _, e := range resp.Data.Results {
+		frameName := fmt.Sprintf("%d %s", e.NodeId, e.SourceId)
+		frame := getFrame(*frames, frameName)
+		if frame == nil {
+			frame = data.NewFrame(frameName)
+			field := data.NewField("time", nil, []time.Time{})
+			frame.Fields = append(frame.Fields, field)
+			for _, m := range query.Metrics {
+				field := data.NewField(m, nil, []float64{})
+				frame.Fields = append(frame.Fields, field)
+			}
+			*frames = append(*frames, frame)
+		}
+		field := getField(frame, "time")
+		field.Append(e.Created)
+		for _, m := range query.Metrics {
+			field := getField(frame, m)
+			val, _ := toFloat64(e.Properties[m])
+			field.Append(val)
+		}
+	}
 }
 
 // fieldInfo describes where a metric is located within the stream row layout.
@@ -498,25 +556,46 @@ func toFloat64(v interface{}) (float64, error) {
 
 // DatumStreamMetadata describes a datum stream's metadata
 type DatumStreamMetadata struct {
-	StreamID       string            `json:"streamId"`
-	ObjectID       int64             `json:"objectId"`
-	SourceID       string            `json:"sourceId"`
-	Zone           string            `json:"zone"`
-	Kind           string            `json:"kind"`
-	Location       map[string]string `json:"location,omitempty"`
-	Instantaneous  []string          `json:"i,omitempty"`
-	Accumulating   []string          `json:"a,omitempty"`
-	Status         []string          `json:"s,omitempty"`
-	OtherFieldData any               `json:"-"` // could be more in the future (from the API, that is)
+	StreamID       string            `cbor:"streamId"`
+	ObjectID       int64             `cbor:"objectId"`
+	SourceID       string            `cbor:"sourceId"`
+	Zone           string            `cbor:"zone"`
+	Kind           string            `cbor:"kind"`
+	Location       map[string]string `cbor:"location,omitempty"`
+	Instantaneous  []string          `cbor:"i,omitempty"`
+	Accumulating   []string          `cbor:"a,omitempty"`
+	Status         []string          `cbor:"s,omitempty"`
+	OtherFieldData any               `cbor:"-"` // could be more in the future (from the API, that is)
 }
 
 // StreamResponse wraps datum stream responses. The Data field is left as is
 // such that it can be decoded differently based on whether it's aggregated
 type StreamResponse struct {
-	Success bool                  `json:"success"`
-	Meta    []DatumStreamMetadata `json:"meta"`
-	Data    []any                 `json:"data"`
-	Message string                `json:"message,omitempty"`
+	Success bool                  `cbor:"success"`
+	Meta    []DatumStreamMetadata `cbor:"meta"`
+	Data    []any                 `cbor:"data"`
+	Message string                `cbor:"message,omitempty"`
+}
+
+
+type PageResultEntry struct {
+	Created    time.Time
+	LocalDate  string
+	LocalTime  string
+	NodeId     int
+	SourceId   string
+	Properties map[string]any
+}
+
+type PageResponseData struct {
+	Results             []PageResultEntry `cbor:"results"`
+	ReturnedResultCount int               `cbor:"returnedResultCount"`
+}
+
+type PageResponse struct {
+	Success             bool                  `cbor:"success"`
+	Data                PageResponseData      `cbor:"data"`
+	Message             string                `cbor:"message,omitempty"`
 }
 
 // StreamDatum requests /datum/stream/datum
@@ -529,10 +608,15 @@ func (c *Client) StreamReading(ctx context.Context, params url.Values) (*StreamR
 	return c.streamRequest(ctx, "/solarquery/api/v1/sec/datum/stream/reading", params)
 }
 
+// Datum requests /datum/list
+func (c *Client) DatumList(ctx context.Context, params url.Values) (*PageResponse, error) {
+	return c.pageRequest(ctx, "/solarquery/api/v1/sec/datum/list", params)
+}
+
 func (c *Client) streamRequest(ctx context.Context, path string, params url.Values) (*StreamResponse, error) {
 	resp, err := c.Request(ctx, GET, path, params, nil, "application/cbor", true)
 	if err != nil {
-		return extractErrorResponse(resp, err)
+		return nil, extractErrorResponse(resp, err)
 	}
 	defer resp.Body.Close()
 
@@ -549,25 +633,99 @@ func (c *Client) streamRequest(ctx context.Context, path string, params url.Valu
 	return &parsed, nil
 }
 
+func (c *Client) pageRequest(ctx context.Context, path string, params url.Values) (*PageResponse, error) {
+	resp, err := c.Request(ctx, GET, path, params, nil, "application/cbor", true)
+	if err != nil {
+		return nil, extractErrorResponse(resp, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read page response: %w", err)
+	}
+
+	var parsed PageResponse
+	if err := cbor.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("decode page response: %w", err)
+	}
+
+	return &parsed, nil
+}
+
 // extractErrorResponse attempts to extract a more detailed error message from
 // the response body when a request fails so that it can be displayed in Grafana directly
-func extractErrorResponse(resp *http.Response, originalErr error) (*StreamResponse, error) {
+func extractErrorResponse(resp *http.Response, originalErr error) error {
 	if resp == nil || resp.Body == nil {
-		return nil, originalErr
+		return originalErr
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil || len(body) == 0 {
-		return nil, originalErr
+		return originalErr
 	}
 
 	// Try to decode as CBOR first to get structured error message
 	var parsed StreamResponse
 	if cbor.Unmarshal(body, &parsed) == nil && parsed.Message != "" {
-		return &parsed, fmt.Errorf("%w (message: %s)", originalErr, parsed.Message)
+		return fmt.Errorf("%w (message: %s)", originalErr, parsed.Message)
 	}
 
 	// Fall back to plain text body
-	return nil, fmt.Errorf("%w (body: %s)", originalErr, string(body))
+	return fmt.Errorf("%w (body: %s)", originalErr, string(body))
+}
+
+func (e *PageResultEntry) UnmarshalCBOR(data []byte) error {
+	var raw map[string]cbor.RawMessage
+
+	if err := cbor.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	e.Properties = make(map[string]any)
+
+	for k, v := range raw {
+		switch k {
+		case "created":
+			var s string
+			if err := cbor.Unmarshal(v, &s); err != nil {
+				return err
+			}
+			t, err := time.Parse("2006-01-02 15:04:05Z07:00", s)
+			if err != nil {
+				return err
+			}
+			e.Created = t
+
+		case "localDate":
+			if err := cbor.Unmarshal(v, &e.LocalDate); err != nil {
+				return err
+			}
+
+		case "localTime":
+			if err := cbor.Unmarshal(v, &e.LocalTime); err != nil {
+				return err
+			}
+
+		case "nodeId":
+			if err := cbor.Unmarshal(v, &e.NodeId); err != nil {
+				return err
+			}
+
+		case "sourceId":
+			if err := cbor.Unmarshal(v, &e.SourceId); err != nil {
+				return err
+			}
+
+		default:
+			var value any
+			if err := cbor.Unmarshal(v, &value); err != nil {
+				return err
+			}
+			e.Properties[k] = value
+		}
+	}
+
+	return nil
 }
