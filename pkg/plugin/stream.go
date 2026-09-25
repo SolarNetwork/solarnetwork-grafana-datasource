@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 type Message struct {
@@ -50,6 +50,8 @@ func (d *Datasource) PublishStream(context.Context, *backend.PublishStreamReques
 	}, nil
 }
 
+var cache = NewMQTTClientCache()
+
 func (d *Datasource) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
 	q := Query{}
 	json.Unmarshal(req.Data, &q)
@@ -64,81 +66,55 @@ func (d *Datasource) RunStream(ctx context.Context, req *backend.RunStreamReques
 		return fmt.Errorf("API secret not configured")
 	}
 
-	now := time.Now()
-	signedHeaders := map[string]string{
-		"Host": "data.solarnetwork.net",
-		"X-SN-Date": GetXSnDate(now),
+	client, err := cache.Get(broker, token, secret)
+	if err != nil {
+		return err
 	}
-	signature := GenerateFluxSignature(token, secret, "GET", "/solarflux/auth", signedHeaders, now)
-
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(broker)
-	opts.SetClientID(token + "_grafana")
-	opts.SetUsername(token)
-	opts.SetPassword(signature)
-
-	msgHandler := func(
-		client mqtt.Client,
-		msg mqtt.Message,
-	) {
-		nodeId, sourceId, parsed := parseTopic(msg.Topic())
-		if !parsed {
-			log.DefaultLogger.Error("Failed to parse topic", "error", err)
-			return
-		}
-
-		var message Message
-		if err := cbor.Unmarshal(msg.Payload(), &message); err != nil {
-			log.DefaultLogger.Error("Failed to decode CBOR", "error", err)
-			return
-		}
-
-		frameName := fmt.Sprintf("%s %s", nodeId, sourceId)
-		frame := data.NewFrame(frameName)
-		frame.Fields = append(frame.Fields, data.NewField("time", nil, []time.Time{time.Time(message.Created)}))
-		for _, metric := range q.Metrics {
-			val, err := toFloat64(message.Properties[metric])
-			if err != nil {
-				log.DefaultLogger.Error("Failed to get float for metric")
-			}
-			frame.Fields = append(frame.Fields, data.NewField(metric, nil, []float64{val}))
-		}
-
-		if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
-			log.DefaultLogger.Error("Failed send frame", "error", err)
-		}
-	}
-	opts.SetDefaultPublishHandler(msgHandler);
-
-	client := mqtt.NewClient(opts)
-
-	conn := client.Connect()
-	if conn.Wait() && conn.Error() != nil {
-		return conn.Error()
-	}
-
-	defer client.Disconnect(1000)
 
 	var subscriptions []string
 	for _, nodeId := range q.NodeIDs {
 		for _, sourceId := range q.SourceIDs {
-			topic := fmt.Sprintf("node/%d/datum/0/%s", nodeId, sourceId)
-			conn = client.Subscribe(topic, 0, nil)
-
-			if conn.Wait() && conn.Error() != nil {
-				return conn.Error()
-			}
-
-			log.DefaultLogger.Info("Subscribed to SolarFlux stream", "topic", topic)
+			topic := fmt.Sprintf("node/%d/datum/0/%s", nodeId, antToMQTTPattern(sourceId))
 			subscriptions = append(subscriptions, topic)
 		}
 	}
+	consumer, err := client.Subscribe(subscriptions...)
 
-	<-ctx.Done()
+	defer consumer.Close()
 
-	for _, topic := range subscriptions {
-		client.Unsubscribe(topic)
-		log.DefaultLogger.Info("Unsubscribed from SolarFlux stream", "topic", topic)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case msg := <-consumer.Messages():
+			nodeId, sourceId, parsed := parseTopic(msg.Topic)
+			if !parsed {
+				log.DefaultLogger.Error("Failed to parse topic", "error", err)
+				continue
+			}
+
+			var message Message
+			if err := cbor.Unmarshal(msg.Payload, &message); err != nil {
+				log.DefaultLogger.Error("Failed to decode CBOR", "error", err)
+				continue
+			}
+
+			frameName := fmt.Sprintf("%s %s", nodeId, sourceId)
+			frame := data.NewFrame(frameName)
+			frame.Fields = append(frame.Fields, data.NewField("time", nil, []time.Time{time.Time(message.Created)}))
+			for _, metric := range q.Metrics {
+				val, err := toFloat64(message.Properties[metric])
+				if err != nil {
+					log.DefaultLogger.Error("Failed to get float for metric")
+				}
+				frame.Fields = append(frame.Fields, data.NewField(metric, nil, []float64{val}))
+			}
+
+			if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+				log.DefaultLogger.Error("Failed send frame", "error", err)
+			}
+		}
 	}
 
 	return nil
@@ -189,4 +165,21 @@ func (m *Message) UnmarshalCBOR(data []byte) error {
 	}
 
 	return nil
+}
+
+func antToMQTTPattern(ant string) string {
+	parts := strings.Split(ant, "/")
+
+	for i, part := range parts {
+		switch part {
+		case "**":
+			if i == len(parts) - 1 {
+				parts[i] = "#"
+			}
+		case "*":
+			parts[i] = "+"
+		}
+	}
+
+	return strings.Join(parts, "/")
 }

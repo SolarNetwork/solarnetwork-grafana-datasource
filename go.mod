@@ -5,6 +5,7 @@ go 1.24.1
 toolchain go1.24.4
 
 require (
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/grafana/grafana-plugin-sdk-go v0.278.0
 )
@@ -18,7 +19,6 @@ require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20250429231605-6ed5b53462d4 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
-	github.com/eclipse/paho.mqtt.golang v1.5.1 // indirect
 	github.com/elazarl/goproxy v1.7.2 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
