@@ -147,8 +147,7 @@ func GenerateFluxSignature(token, secret, method, path string, signedHeaders map
 	msg := GenerateSigningMessage(t, canonical)
 	sig := GenerateSignature([]byte(msg), key)
 
-	headerNames := strings.Join(slices.Sorted(maps.Keys(signedHeaders)), ";")
-	return fmt.Sprintf("SNWS2 Credential=%s,SignedHeaders=%s,Signature=%s,Date=%d", token, headerNames, sig, t.Unix())
+	return fmt.Sprintf("Signature=%s,Date=%d", sig, t.Unix())
 }
 
 func lowerKeys(m map[string]string) map[string]string {
