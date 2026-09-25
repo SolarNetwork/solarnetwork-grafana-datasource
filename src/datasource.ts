@@ -98,7 +98,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
 
     for (const query of streamingQueries) {
       // path has symbol and length constraints, so make a hash for it
-      const pathHash = CryptoJS.SHA1(`${query.queryType}-${query.sourceIds.join(",")}-${query.nodeIds.join(",")}-${query.metrics.join(",")}-${query.combiningType}-${query.aggregation}-${query.datumReadingType}`);
+      const pathHash = CryptoJS.SHA1(`${query.queryType}-${query.sourceIds.join(",")}-${query.nodeIds.join(",")}-${query.metrics.join(",")}-${query.aggregation}`);
       observables.push(
         getGrafanaLiveSrv().getDataStream({
           addr: {
