@@ -43,10 +43,9 @@ func (q *Query) isCombining() bool {
 	return q.CombiningType != "" && !strings.EqualFold(q.CombiningType, "none")
 }
 
-// QueryData handles queries sent from Grafana
-func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	response := backend.NewQueryDataResponse()
-	settings := req.PluginContext.DataSourceInstanceSettings
+// Get a SolarQuery API client for the datasource relating to the given request
+func (d *Datasource) GetQueryClient(ctx backend.PluginContext) (*Client, error) {
+	settings := ctx.DataSourceInstanceSettings
 	token, host, proxy, _, err := extractSettings(settings)
 	if err != nil {
 		return nil, fmt.Errorf("extract settings: %w", err)
@@ -57,7 +56,16 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		return nil, fmt.Errorf("API secret not configured")
 	}
 
-	client := NewClient(host, proxy, &Credentials{Token: token, Secret: secret}, nil, nil)
+	return NewClient(host, proxy, &Credentials{Token: token, Secret: secret}, nil, nil), nil
+}
+
+// QueryData handles queries sent from Grafana
+func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	response := backend.NewQueryDataResponse()
+	client, err := d.GetQueryClient(req.PluginContext)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, q := range req.Queries {
 		res := d.processQuery(ctx, client, q)

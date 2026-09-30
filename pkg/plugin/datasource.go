@@ -2,12 +2,9 @@ package plugin
 
 import (
 	"context"
-	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/resource"
 	"github.com/solarnetwork/solarnetwork-datasource/pkg/models"
 )
 
@@ -27,27 +24,7 @@ func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (ins
 
 type Datasource struct{}
 
-type SigningKeyInfo struct {
-	Key  string    `json:"key"`
-	Date time.Time `json:"date"`
-}
-
 func (d *Datasource) Dispose() {}
-
-func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
-	// Do not log the full request: it carries DecryptedSecureJSONData (the API secret).
-	log.DefaultLogger.Info("CallResource called", "method", req.Method, "path", req.Path)
-
-	t := time.Now().UTC()
-	secret := req.PluginContext.DataSourceInstanceSettings.DecryptedSecureJSONData["secret"]
-	key := GenerateSigningKeyHex(secret, t, "snws2_request")
-	info := &SigningKeyInfo{
-		Key:  key,
-		Date: t,
-	}
-
-	return resource.SendJSON(sender, info)
-}
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
 func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {

@@ -86,11 +86,3 @@ export interface SolarNetworkDataSourceOptions extends DataSourceJsonData {
 export interface SolarNetworkSecureJsonData {
   secret?: string;
 }
-
-/**
- * SolarNetwork API signing key.
- */
-export interface SigningKeyInfo {
-  key: CryptoJS.lib.WordArray;
-  date: Date;
-}
