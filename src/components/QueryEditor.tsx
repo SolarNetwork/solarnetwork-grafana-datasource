@@ -8,6 +8,7 @@ import {
   MultiCombobox,
   RadioButtonGroup,
   Stack,
+  Switch,
   TagsInput,
 } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
@@ -59,6 +60,7 @@ DatumReadingType.enumValues().forEach(value => {
 
 export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
   const { queryType,
+    useStreaming,
     nodeIds,
     sourceIds,
     metrics,
@@ -101,6 +103,11 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     };
   }, [datasource]);
 
+  const onUseStreamingChange = (value: boolean) => {
+    onChange({ ...query, useStreaming: value });
+    onRunQuery();
+  };
+
   const onNodeIdsChange = (option: Array<ComboboxOption<number>>) => {
     const selectedNodeIds: number[] = option.filter((o) => !!o.value).map((o) => o.value!);
     onChange({ ...query, nodeIds: selectedNodeIds });
@@ -140,6 +147,13 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   return (
     <Stack gap={5}>
       <FieldSet label="Query Data">
+        <InlineFieldRow>
+          <InlineField label="Streaming" labelWidth={20}>
+            <Switch
+              value={useStreaming}
+              onChange={event => { onUseStreamingChange(event.currentTarget.checked); }} />
+          </InlineField>
+        </InlineFieldRow>
         <InlineFieldRow>
           <InlineField label="Node IDs" labelWidth={20}>
             <MultiCombobox

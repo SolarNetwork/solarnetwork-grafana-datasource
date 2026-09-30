@@ -9,6 +9,9 @@ export const DEFAULT_HOST = 'https://data.solarnetwork.net';
 /** The default proxy URL (10m cache). */
 export const DEFAULT_PROXY_URL = 'https://query.solarnetwork.net';
 
+/** The default SolarFlux URL. */
+export const DEFAULT_MQTT = 'mqtts://fluxion.solarnetwork.net:8885';
+
 /**
  * The possible query types.
  */
@@ -48,6 +51,7 @@ export type SolarNetworkCombiningTypeNames = CombiningTypeNames | SolarNetworkEx
 
 export interface SolarNetworkQuery extends DataQuery {
   queryType: SolarNetworkQueryType;
+  useStreaming: boolean;
   nodeIds: number[];
   sourceIds: string[];
   metrics: string[];
@@ -73,6 +77,7 @@ export interface SolarNetworkDataSourceOptions extends DataSourceJsonData {
   token: string;
   host: string;
   proxy?: string;
+  mqtt?: string;
 }
 
 /**
