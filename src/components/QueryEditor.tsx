@@ -10,7 +10,6 @@ import {
   RadioButtonGroup,
   Stack,
   Switch,
-  TagsInput,
 } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
@@ -72,15 +71,15 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
 
   const nodeIdOptions = useOptions(() => datasource.getNodeList(), []);
   const sourceIdOptions = useOptions(() => datasource.getSourceList(nodeIds), [nodeIds]);
+  const metricOptions = useOptions(() => datasource.getMetricList(nodeIds, sourceIds), [nodeIds, sourceIds]);
 
   const onUseStreamingChange = (value: boolean) => {
     onChange({ ...query, useStreaming: value });
     onRunQuery();
   };
 
-  const onNodeIdsChange = (option: Array<ComboboxOption<number>>) => {
-    const selectedNodeIds: number[] = option.filter((o) => !!o.value).map((o) => o.value!);
-    onChange({ ...query, nodeIds: selectedNodeIds });
+  const onNodeIdsChange = (options: Array<ComboboxOption<number>>) => {
+    onChange({ ...query, nodeIds: options.map((option) => option.value) });
     onRunQuery();
   };
 
@@ -89,8 +88,8 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     onRunQuery();
   };
 
-  const onMetricsChangeTags = (tags: string[]) => {
-    onChange({ ...query, metrics: tags });
+  const onMetricsChange = (options: Array<ComboboxOption<string>>) => {
+    onChange({ ...query, metrics: options.map((option) => option.value) });
     onRunQuery();
   };
 
@@ -151,12 +150,15 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
         </InlineFieldRow>
         <InlineFieldRow>
           <InlineField label="Metrics" labelWidth={20}>
-            <TagsInput
+            <MultiCombobox
               width={40}
+              options={metricOptions.options}
               placeholder='New metric (enter key to add)'
-              tags={metrics}
-              onChange={onMetricsChangeTags}
-              autoColors={false}
+              value={metrics}
+              isClearable
+              loading={metricOptions.loading}
+              onChange={onMetricsChange}
+              createCustomValue
             />
           </InlineField>
         </InlineFieldRow>

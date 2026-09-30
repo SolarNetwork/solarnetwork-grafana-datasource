@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -17,6 +18,7 @@ func NewResourceMux(d *Datasource) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/nodes", d.getNodes)
 	mux.HandleFunc("/sources", d.getSources)
+	mux.HandleFunc("/metrics", d.getMetrics)
 	return mux
 }
 
@@ -33,8 +35,6 @@ type NodesResponse struct {
 	Data    []int  `cbor:"data"`
 	Message string `cbor:"message,omitempty"`
 }
-
-type NodesResult []int
 
 func (d *Datasource) getNodes(rw http.ResponseWriter, req *http.Request) {
 	ctx := backend.PluginConfigFromContext(req.Context())
@@ -63,7 +63,9 @@ func (d *Datasource) getNodes(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	body, err = json.Marshal(parsed.Data)
+	nodes := parsed.Data
+	sort.Ints(nodes)
+	body, err = json.Marshal(nodes)
 	if err != nil {
 		writeError(rw, err)
 		return
@@ -87,8 +89,6 @@ type SourcesResponse struct {
 	Data    []SourceEntry `cbor:"data"`
 	Message string        `cbor:"message,omitempty"`
 }
-
-type SourcesResult []string
 
 func (d *Datasource) getSources(rw http.ResponseWriter, req *http.Request) {
 	ctx := backend.PluginConfigFromContext(req.Context())
@@ -127,7 +127,76 @@ func (d *Datasource) getSources(rw http.ResponseWriter, req *http.Request) {
 		sources[i] = source.SourceId
 	}
 	sources = unique(sources)
+	sort.Strings(sources)
 	body, err = json.Marshal(sources)
+	if err != nil {
+		writeError(rw, err)
+		return
+	}
+
+	rw.Header().Add("Content-Type", "application/json")
+	_, err = rw.Write(body)
+	if err != nil {
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
+type StreamMetadataResponse struct {
+	Success bool                  `cbor:"success"`
+	Data    []DatumStreamMetadata `cbor:"data"`
+	Message string                `cbor:"message,omitempty"`
+}
+
+func (d *Datasource) getMetrics(rw http.ResponseWriter, req *http.Request) {
+	ctx := backend.PluginConfigFromContext(req.Context())
+	client, err := d.GetQueryClient(ctx)
+	if err != nil {
+		writeError(rw, err)
+		return
+	}
+
+	nodeIds := req.URL.Query()["nodeIds"]
+	sourceIds := req.URL.Query()["sourceIds"]
+	params := url.Values{
+		"nodeIds": append([]string(nil), nodeIds...),
+		"sourceIds": append([]string(nil), sourceIds...),
+	}
+	resp, err := client.Request(req.Context(), GET, "/solarquery/api/v1/sec/datum/stream/meta/node", params, nil, "application/cbor", true)
+	if err != nil {
+		writeError(rw, extractErrorResponse(resp, err))
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	log.DefaultLogger.Info("Body", "body", body)
+	if err != nil {
+		writeError(rw, fmt.Errorf("read metadata response: %w", err))
+		return
+	}
+
+	var parsed StreamMetadataResponse
+	if err := cbor.Unmarshal(body, &parsed); err != nil {
+		writeError(rw, fmt.Errorf("decode metadata response: %w", err))
+		return
+	}
+
+	metrics := []string{}
+	for _, stream := range parsed.Data {
+		for _, i := range stream.Instantaneous {
+			metrics = append(metrics, i)
+		}
+		for _, a := range stream.Accumulating {
+			metrics = append(metrics, a)
+		}
+		for _, s := range stream.Status {
+			metrics = append(metrics, s)
+		}
+	}
+	metrics = unique(metrics)
+	sort.Strings(metrics)
+	body, err = json.Marshal(metrics)
 	if err != nil {
 		writeError(rw, err)
 		return

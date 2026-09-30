@@ -92,7 +92,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
   }
 
   /**
-   * Get a list of all node IDs available to the configured credentials.
+   * Get a list of all source IDs for the given nodes
    *
    * @param {number[]} the nodeIds to get sources for
    * @returns the available sources
@@ -101,6 +101,21 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     if (!nodeIds.length) return [];
     return this.getResource<string[]>("sources", {
         nodeIds: nodeIds,
+    });
+  }
+
+  /**
+   * Get a list of all metrics for the given nodes and sources
+   *
+   * @param {number[]} the nodeIds to get metrics for
+   * @param {string[]} the nodeIds to get metrics for
+   * @returns the available sources
+   */
+  async getMetricList(nodeIds: number[], sourceIds: string[]): Promise<string[]> {
+    if (!nodeIds.length && !sourceIds.length) return [];
+    return this.getResource<string[]>("metrics", {
+        nodeIds: nodeIds,
+        sourceIds: sourceIds,
     });
   }
 }
