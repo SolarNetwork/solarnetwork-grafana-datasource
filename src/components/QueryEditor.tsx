@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from "react";
+import { useOptions } from "./options"
 import {
   Combobox,
   ComboboxOption,
@@ -69,39 +70,8 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     datumReadingType
   } = query;
 
-  const [nodeIdOptions, setNodeIdOptions] = useState<Array<{ label: string; value: number }>>([]);
-  const [loading, setLoading] = useState(false);
-
-  // asynchronously load node IDs
-  useEffect(() => {
-    let active = true;
-
-    const loadNodeIds = async () => {
-      setLoading(true);
-      try {
-        const nodeIds = await datasource.getNodeList();
-        if (active) {
-          const options = nodeIds.map((nodeId: number) => ({
-            label: nodeId.toString(),
-            value: nodeId
-          }));
-          setNodeIdOptions(options);
-        }
-      } catch (error) {
-        console.error('Failed to load node IDs for token.', error);
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadNodeIds();
-
-    return () => {
-      active = false;
-    };
-  }, [datasource]);
+  const nodeIdOptions = useOptions(() => datasource.getNodeList(), []);
+  const sourceIdOptions = useOptions(() => datasource.getSourceList(nodeIds), [nodeIds]);
 
   const onUseStreamingChange = (value: boolean) => {
     onChange({ ...query, useStreaming: value });
@@ -114,8 +84,8 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     onRunQuery();
   };
 
-  const onSourceIdsChangeTags = (tags: string[]) => {
-    onChange({ ...query, sourceIds: tags });
+  const onSourceIdsChange = (options: Array<ComboboxOption<string>>) => {
+    onChange({ ...query, sourceIds: options.map((option) => option.value) });
     onRunQuery();
   };
 
@@ -158,22 +128,24 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
           <InlineField label="Node IDs" labelWidth={20}>
             <MultiCombobox
               width={40}
-              options={nodeIdOptions}
+              options={nodeIdOptions.options}
               value={nodeIds}
-              placeholder={loading ? 'Loading...' : ''}
               isClearable
-              loading={loading}
+              loading={nodeIdOptions.loading}
               onChange={onNodeIdsChange} />
           </InlineField>
         </InlineFieldRow>
         <InlineFieldRow>
           <InlineField label="Source IDs" labelWidth={20}>
-            <TagsInput
+            <MultiCombobox
               width={40}
-              placeholder='New source ID (enter key to add)'
-              tags={sourceIds}
-              onChange={onSourceIdsChangeTags}
-              autoColors={false}
+              options={sourceIdOptions.options}
+              placeholder="New source ID (enter key to add)"
+              value={sourceIds}
+              isClearable
+              loading={sourceIdOptions.loading}
+              onChange={onSourceIdsChange}
+              createCustomValue
             />
           </InlineField>
         </InlineFieldRow>

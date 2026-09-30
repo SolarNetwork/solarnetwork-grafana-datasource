@@ -88,6 +88,19 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
    * @returns the available node IDs
    */
   async getNodeList(): Promise<number[]> {
-    return await this.getResource<number[]>("nodes");
+    return this.getResource<number[]>("nodes");
+  }
+
+  /**
+   * Get a list of all node IDs available to the configured credentials.
+   *
+   * @param {number[]} the nodeIds to get sources for
+   * @returns the available sources
+   */
+  async getSourceList(nodeIds: number[]): Promise<string[]> {
+    if (!nodeIds.length) return [];
+    return this.getResource<string[]>("sources", {
+        nodeIds: nodeIds,
+    });
   }
 }

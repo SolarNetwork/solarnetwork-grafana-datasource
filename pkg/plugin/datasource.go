@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
 	"github.com/solarnetwork/solarnetwork-datasource/pkg/models"
 )
 
@@ -19,10 +20,14 @@ var (
 )
 
 func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &Datasource{}, nil
+	d := Datasource{}
+	d.resourceHandler = httpadapter.New(NewResourceMux(&d))
+	return &d, nil
 }
 
-type Datasource struct{}
+type Datasource struct{
+	resourceHandler backend.CallResourceHandler
+}
 
 func (d *Datasource) Dispose() {}
 

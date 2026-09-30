@@ -6,27 +6,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-func (d *Datasource) CallResource(
-	ctx context.Context,
-	req *backend.CallResourceRequest,
-	sender backend.CallResourceResponseSender,
-) error {
-	log.DefaultLogger.Info("CallResource called", "method", req.Method, "path", req.Path)
+func NewResourceMux(d *Datasource) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/nodes", d.getNodes)
+	mux.HandleFunc("/sources", d.getSources)
+	return mux
+}
 
-	switch req.Path {
-	case "nodes":
-		return d.getNodes(ctx, req, sender)
-	default:
-		return sender.Send(&backend.CallResourceResponse{
-			Status: http.StatusNotFound,
-		})
-	}
+func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+	return d.resourceHandler.CallResource(ctx, req, sender)
+}
+
+func writeError(rw http.ResponseWriter, err error) {
+	http.Error(rw, err.Error(), http.StatusInternalServerError)
 }
 
 type NodesResponse struct {
@@ -37,42 +36,123 @@ type NodesResponse struct {
 
 type NodesResult []int
 
-func (d *Datasource) getNodes(
-	ctx context.Context,
-	req *backend.CallResourceRequest,
-	sender backend.CallResourceResponseSender,
-) error {
-	client, err := d.GetQueryClient(req.PluginContext)
+func (d *Datasource) getNodes(rw http.ResponseWriter, req *http.Request) {
+	ctx := backend.PluginConfigFromContext(req.Context())
+	client, err := d.GetQueryClient(ctx)
 	if err != nil {
-		return err
+		writeError(rw, err)
+		return
 	}
 
-	resp, err := client.Request(ctx, GET, "/solarquery/api/v1/sec/nodes", nil, nil, "application/cbor", true)
+	resp, err := client.Request(req.Context(), GET, "/solarquery/api/v1/sec/nodes", nil, nil, "application/cbor", true)
 	if err != nil {
-		return extractErrorResponse(resp, err)
+		writeError(rw, extractErrorResponse(resp, err))
+		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read nodes response: %w", err)
+		writeError(rw, fmt.Errorf("read nodes response: %w", err))
+		return
 	}
 
 	var parsed NodesResponse
 	if err := cbor.Unmarshal(body, &parsed); err != nil {
-		return fmt.Errorf("decode nodes response: %w", err)
+		writeError(rw, fmt.Errorf("decode nodes response: %w", err))
+		return
 	}
 
 	body, err = json.Marshal(parsed.Data)
 	if err != nil {
-		return err
+		writeError(rw, err)
+		return
 	}
 
-	return sender.Send(&backend.CallResourceResponse{
-		Status: http.StatusOK,
-		Headers: map[string][]string{
-			"Content-Type": {"application/json"},
-		},
-		Body: body,
-	})
+	rw.Header().Add("Content-Type", "application/json")
+	_, err = rw.Write(body)
+	if err != nil {
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
+type SourceEntry struct {
+	NodeId   int    `cbor:"nodeId"`
+	SourceId string `cbor:"sourceId"`
+}
+
+type SourcesResponse struct {
+	Success bool          `cbor:"success"`
+	Data    []SourceEntry `cbor:"data"`
+	Message string        `cbor:"message,omitempty"`
+}
+
+type SourcesResult []string
+
+func (d *Datasource) getSources(rw http.ResponseWriter, req *http.Request) {
+	ctx := backend.PluginConfigFromContext(req.Context())
+	client, err := d.GetQueryClient(ctx)
+	if err != nil {
+		writeError(rw, err)
+		return
+	}
+
+	nodeIds := req.URL.Query()["nodeIds"]
+	params := url.Values{
+		"nodeIds": append([]string(nil), nodeIds...),
+	}
+	resp, err := client.Request(req.Context(), GET, "/solarquery/api/v1/sec/nodes/sources", params, nil, "application/cbor", true)
+	if err != nil {
+		writeError(rw, extractErrorResponse(resp, err))
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	log.DefaultLogger.Info("Body", "body", body)
+	if err != nil {
+		writeError(rw, fmt.Errorf("read nodes response: %w", err))
+		return
+	}
+
+	var parsed SourcesResponse
+	if err := cbor.Unmarshal(body, &parsed); err != nil {
+		writeError(rw, fmt.Errorf("decode nodes response: %w", err))
+		return
+	}
+
+	sources := make([]string, len(parsed.Data))
+	for i, source := range parsed.Data {
+		sources[i] = source.SourceId
+	}
+	sources = unique(sources)
+	body, err = json.Marshal(sources)
+	if err != nil {
+		writeError(rw, err)
+		return
+	}
+
+	rw.Header().Add("Content-Type", "application/json")
+	_, err = rw.Write(body)
+	if err != nil {
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
+func unique[T comparable](values []T) []T {
+	seen := make(map[T]struct{}, len(values))
+	result := make([]T, 0, len(values))
+
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+
+	return result
 }
