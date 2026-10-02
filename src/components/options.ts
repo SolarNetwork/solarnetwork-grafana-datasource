@@ -43,4 +43,3 @@ export function useOptions<T extends string | number>(
 
   return { options, loading, error };
 }
-

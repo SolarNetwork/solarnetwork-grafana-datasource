@@ -12,7 +12,8 @@ import {
   Switch,
 } from '@grafana/ui';
 import { SelectableValue, QueryEditorProps } from '@grafana/data';
-import { DataSource } from '../datasource';
+import { getTemplateSrv } from '@grafana/runtime';
+import { DataSource, resolveValues } from '../datasource';
 import {
   SolarNetworkAggregationNames,
   SolarNetworkCombiningTypeNames,
@@ -69,16 +70,20 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     datumReadingType
   } = query;
 
+  const variableOptions = getTemplateSrv().getVariables().map((variable) => ({ label: `$${variable.name}`, value: `$${variable.name}` }));
+
+  const nIds = resolveValues(nodeIds, undefined, (v) => typeof v === "string" ? Number(v) : v);
+  const sIds = resolveValues(sourceIds);
   const nodeIdOptions = useOptions(() => datasource.getNodeList(), []);
-  const sourceIdOptions = useOptions(() => datasource.getSourceList(nodeIds), [nodeIds]);
-  const metricOptions = useOptions(() => datasource.getMetricList(nodeIds, sourceIds), [nodeIds, sourceIds]);
+  const sourceIdOptions = useOptions(() => datasource.getSourceList(nIds), [nodeIds]);
+  const metricOptions = useOptions(() => datasource.getMetricList(nIds, sIds), [nodeIds, sourceIds]);
 
   const onUseStreamingChange = (value: boolean) => {
     onChange({ ...query, useStreaming: value });
     onRunQuery();
   };
 
-  const onNodeIdsChange = (options: Array<ComboboxOption<number>>) => {
+  const onNodeIdsChange = (options: Array<ComboboxOption<number | string>>) => {
     onChange({ ...query, nodeIds: options.map((option) => option.value) });
     onRunQuery();
   };
@@ -127,7 +132,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
           <InlineField label="Node IDs" labelWidth={20}>
             <MultiCombobox
               width={40}
-              options={nodeIdOptions.options}
+              options={[...variableOptions, ...nodeIdOptions.options]}
               value={nodeIds}
               isClearable
               loading={nodeIdOptions.loading}
@@ -138,7 +143,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
           <InlineField label="Source IDs" labelWidth={20}>
             <MultiCombobox
               width={40}
-              options={sourceIdOptions.options}
+              options={[...variableOptions, ...sourceIdOptions.options]}
               placeholder="New source ID (enter key to add)"
               value={sourceIds}
               isClearable
@@ -152,7 +157,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
           <InlineField label="Metrics" labelWidth={20}>
             <MultiCombobox
               width={40}
-              options={metricOptions.options}
+              options={[...variableOptions, ...metricOptions.options]}
               placeholder='New metric (enter key to add)'
               value={metrics}
               isClearable

@@ -52,7 +52,7 @@ export type SolarNetworkCombiningTypeNames = CombiningTypeNames | SolarNetworkEx
 export interface SolarNetworkQuery extends DataQuery {
   queryType: SolarNetworkQueryType;
   useStreaming: boolean;
-  nodeIds: number[];
+  nodeIds: (number | string)[];
   sourceIds: string[];
   metrics: string[];
   combiningType?: SolarNetworkCombiningTypeNames;
@@ -85,4 +85,11 @@ export interface SolarNetworkDataSourceOptions extends DataSourceJsonData {
  */
 export interface SolarNetworkSecureJsonData {
   secret?: string;
+}
+
+export type VariableQueryKind = 'nodes' | 'sources' | 'metrics'
+export interface SolarNetworkVariableQuery extends DataQuery {
+  kind: VariableQueryKind;
+  nodeIds?: (number | string)[];
+  sourceIds?: string[];
 }

@@ -2,37 +2,78 @@ import {
   CoreApp,
   DataQueryRequest,
   DataQueryResponse,
+  DataSourceInstanceSettings,
   LiveChannelScope,
+  MetricFindValue,
+  ScopedVars,
   TestDataSourceResponse,
+  TimeRange,
 } from '@grafana/data';
 import {
   DataSourceWithBackend,
   getGrafanaLiveSrv,
+  getTemplateSrv,
 } from '@grafana/runtime';
 
 import {
   DEFAULT_QUERY,
   SolarNetworkDataSourceOptions,
   SolarNetworkQuery,
+  SolarNetworkVariableQuery,
 } from './types';
+import { VariableSupport } from './variableSupport';
 
 import CryptoJS from 'crypto-js';
 
 import { merge, Observable } from 'rxjs';
 
 export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNetworkDataSourceOptions> {
+  constructor(instanceSettings: DataSourceInstanceSettings<SolarNetworkDataSourceOptions>) {
+    super(instanceSettings);
+    this.variables = new VariableSupport(this);
+  }
+
   getDefaultQuery(_: CoreApp): Partial<SolarNetworkQuery> {
     return DEFAULT_QUERY;
   }
 
-  /* TODO
   applyTemplateVariables(query: SolarNetworkQuery, scopedVars: ScopedVars) {
     return {
       ...query,
-      queryText: getTemplateSrv().replace(query.queryText, scopedVars),
+      nodeIds: resolveValues(query.nodeIds, scopedVars, (v) => (typeof v === "string" ? Number(v) : v)),
+      sourceIds: resolveValues(query.sourceIds, scopedVars),
+      metrics: resolveValues(query.metrics, scopedVars),
     };
   }
-  */
+
+  async metricFindQuery(
+    variableQuery: SolarNetworkVariableQuery | string,
+    options?: {
+      scopedVars?: ScopedVars,
+      range?: TimeRange,
+    },
+  ): Promise<MetricFindValue[]> {
+    if (typeof variableQuery === 'string') return [];
+
+    const scopedVars = options?.scopedVars;
+
+    const nodeIds = resolveValues(variableQuery.nodeIds, scopedVars, (v) => (typeof v === "string" ? Number(v) : v ));
+    const sourceIds = resolveValues(variableQuery.sourceIds, scopedVars);
+
+    switch (variableQuery.kind) {
+        case 'nodes':
+            const nodes = await this.getNodeList();
+            return nodes.map((n) => ({ text: String(n), value: n }));
+
+        case 'sources':
+            const sources = await this.getSourceList(nodeIds);
+            return sources.map((s) => ({ text: s }));
+
+        case 'metrics':
+            const metrics = await this.getMetricList(nodeIds, sourceIds);
+            return metrics.map((m) => ({ text: m }));
+    }
+  }
 
   async testDatasource(): Promise<TestDataSourceResponse> {
     return this.getNodeList()
@@ -118,4 +159,31 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
         sourceIds: sourceIds,
     });
   }
+}
+
+export function resolveValues<T = string>(
+  expressions: Array<string | T> | undefined,
+  scopedVars?: ScopedVars,
+  convert?: (value: string) => T,
+): T[] {
+  return expressions?.flatMap((expression) => {
+    if (typeof expression !== "string") return [expression];
+
+    const values: string[] = [];
+
+    getTemplateSrv().replace(
+      expression,
+      scopedVars,
+      (value: string | string[]) => {
+        if (Array.isArray(value)) {
+          values.push(...value);
+        } else {
+          values.push(value);
+        }
+        return "";
+      }
+    );
+
+    return convert ? values.map(convert) : values as T[];
+  }) ?? [];
 }
