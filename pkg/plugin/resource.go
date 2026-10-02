@@ -11,7 +11,6 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 func NewResourceMux(d *Datasource) *http.ServeMux {
@@ -110,7 +109,6 @@ func (d *Datasource) getSources(rw http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	log.DefaultLogger.Info("Body", "body", body)
 	if err != nil {
 		writeError(rw, fmt.Errorf("read nodes response: %w", err))
 		return
@@ -170,7 +168,6 @@ func (d *Datasource) getMetrics(rw http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	log.DefaultLogger.Info("Body", "body", body)
 	if err != nil {
 		writeError(rw, fmt.Errorf("read metadata response: %w", err))
 		return
