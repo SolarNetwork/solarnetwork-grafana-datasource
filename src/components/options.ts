@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ComboboxOption } from '@grafana/ui';
 
-export function useOptions<T extends string | number>(
-    getOptions: () => Promise<T[]>,
-    deps: React.DependencyList,
-) {
-  const [options, setOptions] = useState<ComboboxOption<T>[]>([]);
+export function useOptions<T extends string | number>(getOptions: () => Promise<T[]>) {
+  const [options, setOptions] = useState<Array<ComboboxOption<T>>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | undefined>();
 
@@ -39,7 +36,7 @@ export function useOptions<T extends string | number>(
     return () => {
       cancelled = true;
     };
-  }, deps);
+  }, [getOptions]);
 
   return { options, loading, error };
 }

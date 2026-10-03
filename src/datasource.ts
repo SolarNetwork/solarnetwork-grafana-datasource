@@ -53,7 +53,9 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
       range?: TimeRange,
     },
   ): Promise<MetricFindValue[]> {
-    if (typeof variableQuery === 'string') return [];
+    if (typeof variableQuery === 'string') {
+      return [];
+    }
 
     const scopedVars = options?.scopedVars;
 
@@ -94,7 +96,7 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
     const normalQueries = request.targets.filter(q => !q.useStreaming);
     const streamingQueries = request.targets.filter(q => q.useStreaming);
 
-    const observables: Observable<DataQueryResponse>[] = [];
+    const observables: Array<Observable<DataQueryResponse>> = [];
 
     if (normalQueries.length > 0) {
       observables.push(
@@ -139,7 +141,9 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
    * @returns the available sources
    */
   async getSourceList(nodeIds: number[]): Promise<string[]> {
-    if (!nodeIds.length) return [];
+    if (!nodeIds.length) {
+      return [];
+    }
     return this.getResource<string[]>("sources", {
         nodeIds: nodeIds,
     });
@@ -153,7 +157,9 @@ export class DataSource extends DataSourceWithBackend<SolarNetworkQuery, SolarNe
    * @returns the available sources
    */
   async getMetricList(nodeIds: number[], sourceIds: string[]): Promise<string[]> {
-    if (!nodeIds.length && !sourceIds.length) return [];
+    if (!nodeIds.length && !sourceIds.length) {
+      return [];
+    }
     return this.getResource<string[]>("metrics", {
         nodeIds: nodeIds,
         sourceIds: sourceIds,
@@ -167,14 +173,18 @@ export function resolveValues<T = string>(
   convert?: (value: string) => T,
 ): T[] {
   return expressions?.flatMap((expression) => {
-    if (typeof expression !== "string") return [expression];
+    if (typeof expression !== "string") {
+      return [expression];
+    }
 
     const values: string[] = [];
+    let replacementsFound = false;
 
     getTemplateSrv().replace(
       expression,
       scopedVars,
       (value: string | string[]) => {
+        replacementsFound = true;
         if (Array.isArray(value)) {
           values.push(...value);
         } else {
@@ -183,6 +193,10 @@ export function resolveValues<T = string>(
         return "";
       }
     );
+
+    if (!replacementsFound) {
+      values.push(expression);
+    }
 
     return convert ? values.map(convert) : values as T[];
   }) ?? [];

@@ -1,13 +1,12 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import { useOptions } from "./options";
 import { DataSource, resolveValues } from "../datasource";
-import { SelectableValue } from '@grafana/data';
 import {
+  Combobox,
   ComboboxOption,
   InlineFieldRow,
   InlineField,
   MultiCombobox,
-  Select,
 } from '@grafana/ui';
 import { getTemplateSrv } from '@grafana/runtime';
 import { SolarNetworkVariableQuery, VariableQueryKind } from '../types';
@@ -18,7 +17,7 @@ interface VariableQueryProps {
   datasource: DataSource,
 }
 
-const kindOptions: Array<SelectableValue<VariableQueryKind>> = [
+const kindOptions: Array<ComboboxOption<VariableQueryKind>> = [
   { label: 'Nodes', value: 'nodes' },
   { label: 'Sources', value: 'sources' },
   { label: 'Metrics', value: 'metrics' },
@@ -33,12 +32,16 @@ export function VariableQueryEditor({ query, onChange, datasource }: VariableQue
 
   const variableOptions = getTemplateSrv().getVariables().map((variable) => ({ label: `$${variable.name}`, value: `$${variable.name}` }));
 
-  const nIds = resolveValues(nodeIds, undefined, (v) => typeof v === "string" ? Number(v) : v);
-  const nodeIdOptions = useOptions(() => datasource.getNodeList(), []);
-  const sourceIdOptions = useOptions(() => datasource.getSourceList(nIds), [nodeIds]);
+  const nIds = useMemo(() => resolveValues(nodeIds, undefined, (v) => typeof v === "string" ? Number(v) : v), [nodeIds]);
+  const getNodeList = useCallback(() => datasource.getNodeList(), [datasource]);
+  const nodeIdOptions = useOptions(getNodeList);
+  const getSourceList = useCallback(() => datasource.getSourceList(nIds), [datasource, nIds]);
+  const sourceIdOptions = useOptions(getSourceList);
 
-  const onKindChange = (option: SelectableValue<VariableQueryKind>) => {
-    if (option.value === undefined) return;
+  const onKindChange = (option: ComboboxOption<VariableQueryKind>) => {
+    if (option.value === undefined) {
+      return;
+    }
     onChange({ ...query, kind: option.value }, "kind");
   };
 
@@ -54,7 +57,7 @@ export function VariableQueryEditor({ query, onChange, datasource }: VariableQue
     <>
       <InlineFieldRow>
         <InlineField label="Kind">
-          <Select
+          <Combobox
             options={kindOptions}
             value={kind}
             onChange={onKindChange} />

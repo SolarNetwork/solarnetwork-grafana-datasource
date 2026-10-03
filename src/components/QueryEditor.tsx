@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import { useOptions } from "./options"
 import {
   Combobox,
@@ -72,11 +72,14 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
 
   const variableOptions = getTemplateSrv().getVariables().map((variable) => ({ label: `$${variable.name}`, value: `$${variable.name}` }));
 
-  const nIds = resolveValues(nodeIds, undefined, (v) => typeof v === "string" ? Number(v) : v);
-  const sIds = resolveValues(sourceIds);
-  const nodeIdOptions = useOptions(() => datasource.getNodeList(), []);
-  const sourceIdOptions = useOptions(() => datasource.getSourceList(nIds), [nodeIds]);
-  const metricOptions = useOptions(() => datasource.getMetricList(nIds, sIds), [nodeIds, sourceIds]);
+  const nIds = useMemo(() => resolveValues(nodeIds, undefined, (v) => typeof v === "string" ? Number(v) : v), [nodeIds]);
+  const sIds = useMemo(() => resolveValues(sourceIds), [sourceIds]);
+  const getNodeList = useCallback(() => datasource.getNodeList(), [datasource]);
+  const nodeIdOptions = useOptions(getNodeList);
+  const getSourceList = useCallback(() => datasource.getSourceList(nIds), [datasource, nIds]);
+  const sourceIdOptions = useOptions(getSourceList);
+  const getMetricList = useCallback(() => datasource.getMetricList(nIds, sIds), [datasource, nIds, sIds]);
+  const metricOptions = useOptions(getMetricList);
 
   const onUseStreamingChange = (value: boolean) => {
     onChange({ ...query, useStreaming: value });
