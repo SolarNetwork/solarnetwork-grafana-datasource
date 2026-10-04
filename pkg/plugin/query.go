@@ -210,9 +210,9 @@ func buildQueryParams(query Query, timeRange backend.TimeRange) url.Values {
 		dateDiff := int(timeRange.To.Sub(timeRange.From).Hours() / 24)
 		if dateDiff > 366 {
 			params.Set("aggregation", "Month")
-		} else if dateDiff > 30 {
+		} else if dateDiff > 62 {
 			params.Set("aggregation", "Day")
-		} else if dateDiff > 7 {
+		} else if dateDiff > 2 {
 			params.Set("aggregation", "Hour")
 		}
 	} else if query.Aggregation != "" && query.Aggregation != "None" {
