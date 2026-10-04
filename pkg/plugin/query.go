@@ -206,7 +206,16 @@ func buildQueryParams(query Query, timeRange backend.TimeRange) url.Values {
 	params.Set("startDate", timeRange.From.UTC().Format(time.RFC3339))
 	params.Set("endDate", timeRange.To.UTC().Format(time.RFC3339))
 
-	if query.Aggregation != "" && query.Aggregation != "auto" && query.Aggregation != "None" {
+	if query.Aggregation == "auto" {
+		dateDiff := int(timeRange.To.Sub(timeRange.From).Hours() / 24)
+		if dateDiff > 366 {
+			params.Set("aggregation", "Month")
+		} else if dateDiff > 30 {
+			params.Set("aggregation", "Day")
+		} else if dateDiff > 7 {
+			params.Set("aggregation", "Hour")
+		}
+	} else if query.Aggregation != "" && query.Aggregation != "None" {
 		params.Set("aggregation", query.Aggregation)
 	} else if isCombining {
 		params.Set("aggregation", "FiveMinute")
