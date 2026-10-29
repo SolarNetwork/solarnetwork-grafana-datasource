@@ -6,6 +6,7 @@ import {
 } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import {
+  DEFAULT_DATASOURCE,
   DEFAULT_HOST,
   DEFAULT_MQTT,
   DEFAULT_PROXY_URL,
@@ -22,6 +23,7 @@ const ProxyUrls: Array<{ value: string, label: string }> = [
 
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
+  options.jsonData = { ...DEFAULT_DATASOURCE, ...options.jsonData };
   const { jsonData, secureJsonFields, secureJsonData } = options;
 
   const onTokenChange = (event: ChangeEvent<HTMLInputElement>) => {

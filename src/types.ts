@@ -81,6 +81,15 @@ export interface SolarNetworkDataSourceOptions extends DataSourceJsonData {
 }
 
 /**
+ * DataSource default instance.
+ */
+export const DEFAULT_DATASOURCE: Partial<SolarNetworkDataSourceOptions> = {
+  host: DEFAULT_HOST,
+  proxy: DEFAULT_PROXY_URL,
+  mqtt: DEFAULT_MQTT,
+};
+
+/**
  * Value that is used in the backend, but never sent over HTTP to the frontend.
  */
 export interface SolarNetworkSecureJsonData {
