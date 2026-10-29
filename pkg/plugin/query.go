@@ -561,8 +561,8 @@ func toFloat64(v interface{}) (float64, error) {
 		case 4: // decimal fraction: mantissa * 10^exponent
 			if content, ok := n.Content.([]interface{}); ok && len(content) == 2 {
 				exp, _ := toInt64(content[0])
-				mantissa, _ := toInt64(content[1])
-				return float64(mantissa) * math.Pow(10, float64(exp)), nil
+				mantissa, _ := toFloat64(content[1])
+				return mantissa * math.Pow10(int(exp)), nil
 			}
 		}
 		return 0, fmt.Errorf("unsupported CBOR tag %d", n.Number)
