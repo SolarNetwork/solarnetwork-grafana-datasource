@@ -11,7 +11,7 @@ import {
   Stack,
   Switch,
 } from '@grafana/ui';
-import { SelectableValue, QueryEditorProps } from '@grafana/data';
+import { CoreApp, SelectableValue, QueryEditorProps } from '@grafana/data';
 import { getTemplateSrv } from '@grafana/runtime';
 import { DataSource, resolveValues } from '../datasource';
 import {
@@ -60,6 +60,8 @@ DatumReadingType.enumValues().forEach(value => {
 });
 
 export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
+  const defaults = datasource.getDefaultQuery(CoreApp.PanelEditor);
+  query = { ...defaults, ...query };
   const { queryType,
     useStreaming,
     nodeIds,
